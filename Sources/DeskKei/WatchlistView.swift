@@ -55,6 +55,8 @@ struct WatchlistView: View {
             }
             .padding(10)
         }
+        // 가로 스크롤 뷰는 세로로도 늘어나므로 내용 높이로 고정한다.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var header: some View {

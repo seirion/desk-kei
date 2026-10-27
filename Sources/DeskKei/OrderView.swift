@@ -257,6 +257,7 @@ struct OrderView: View {
                     }
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
