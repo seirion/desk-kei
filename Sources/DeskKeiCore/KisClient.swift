@@ -168,6 +168,7 @@ public final class KisClient {
             body: [
                 "CANO": cano, "ACNT_PRDT_CD": prdt,
                 "PDNO": req.code,
+                "EXCG_ID_DVSN_CD": MarketClock.orderExchange(),
                 "ORD_DVSN": req.type.rawValue,
                 "ORD_QTY": String(req.qty),
                 "ORD_UNPR": String(req.type == .market ? 0 : req.price),
@@ -195,7 +196,7 @@ public final class KisClient {
     }
 
     /// 미체결 주문 정정
-    public func modifyOrder(orderNo: String, qty: Int, price: Int) async throws -> OrderResult {
+    public func modifyOrder(orderNo: String, exchange: String, qty: Int, price: Int) async throws -> OrderResult {
         guard account.hasTradingAccount else { throw KisError.notConfigured }
         let (cano, prdt) = account.accountParts
         let json = try await call(
@@ -206,6 +207,7 @@ public final class KisClient {
                 "CANO": cano, "ACNT_PRDT_CD": prdt,
                 "KRX_FWDG_ORD_ORGNO": "",
                 "ORGN_ODNO": orderNo,
+                "EXCG_ID_DVSN_CD": exchange.isEmpty ? "KRX" : exchange,
                 "ORD_DVSN": price > 0 ? "00" : "01",
                 "RVSE_CNCL_DVSN_CD": "01",
                 "ORD_QTY": String(qty),
@@ -250,7 +252,8 @@ public final class KisClient {
                     remainQty: int(o["rmn_qty"]),
                     orderTime: str(o["ord_tmd"]),
                     status: str(o["ord_stts"]),
-                    orderType: str(o["ord_dvsn_name"])
+                    orderType: str(o["ord_dvsn_name"]),
+                    exchange: str(o["excg_id_dvsn_cd"])
                 ))
             }
 

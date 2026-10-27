@@ -459,7 +459,7 @@ struct OrderView: View {
         defer { submitting = false }
         do {
             if let target = modifyTarget {
-                let r = try await client.modifyOrder(orderNo: target.orderNo, qty: qty, price: price)
+                let r = try await client.modifyOrder(orderNo: target.orderNo, exchange: target.exchange, qty: qty, price: price)
                 resultMessage = "✅ 정정 완료! 주문번호: \(r.orderNo)"
                 modifyTarget = nil
             } else {
