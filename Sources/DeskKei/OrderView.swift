@@ -68,6 +68,11 @@ struct OrderView: View {
             if tab == .order { Task { await loadHoldings() } }
         }
         .onChange(of: model.assetsVersion) { _ in Task { await loadHoldings() } }
+        .task(id: resultMessage) {
+            guard resultMessage != nil else { return }
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if !Task.isCancelled { resultMessage = nil }
+        }
         .onChange(of: modifyTarget) { target in
             guard let t = target else { return }
             Task { await select(code: t.code, name: t.nameKr) }
@@ -467,7 +472,6 @@ struct OrderView: View {
                 let r = try await client.placeOrder(OrderRequest(code: code, side: side, type: orderType, qty: qty, price: price))
                 resultMessage = "✅ 주문 완료! 주문번호: \(r.orderNo)"
             }
-            inputQty = ""
         } catch {
             errorMessage = error.localizedDescription
         }
