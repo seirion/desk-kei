@@ -102,8 +102,11 @@ swift test
 ```
 .
 ├── Package.swift               # SwiftPM 설정 (DeskKeiCore 라이브러리 + DeskKei 앱 + 테스트)
+├── Resources/
+│   └── AppIcon.icns            # 앱 아이콘
 ├── Scripts/
-│   └── build-app.sh            # release 빌드 후 DeskKei.app 번들 생성
+│   ├── build-app.sh            # release 빌드 후 DeskKei.app 번들 생성
+│   └── make-icon.swift         # 아이콘 원본 PNG(1024x1024)를 그리는 스크립트
 ├── Sources/
 │   ├── DeskKeiCore/            # UI 와 무관한 로직 (테스트 대상)
 │   │   ├── Models.swift            # 계정·시세·호가·잔고·주문 모델
