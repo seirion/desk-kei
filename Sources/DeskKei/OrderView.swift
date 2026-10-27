@@ -279,6 +279,7 @@ struct OrderView: View {
                             .foregroundStyle(orderType == t ? Color.white : Color.primary)
                     }
                     .buttonStyle(.plain)
+                    .disabled(t == .market && MarketClock.isKrxAfterMarket())
                 }
             }
             VStack(spacing: 8) {

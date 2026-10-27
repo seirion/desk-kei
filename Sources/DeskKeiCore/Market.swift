@@ -25,9 +25,15 @@ public enum MarketClock {
         return m >= 9 * 60 && m < 15 * 60 + 30
     }
 
-    /// 주문을 보낼 거래소(KIS `EXCG_ID_DVSN_CD`). 정규장 밖 NXT 운영 시간에는 KRX 주문이 거절된다.
-    public static func orderExchange(_ date: Date = Date()) -> String {
-        isNxtHour(date) ? "NXT" : "KRX"
+    /// KRX 애프터마켓: 16:00~20:00. 시장가 주문이 없고 지정가는 주문구분 41 을 쓴다.
+    public static func isKrxAfterMarket(_ date: Date = Date()) -> Bool {
+        let m = minutes(date)
+        return m >= 16 * 60 && m < 20 * 60
+    }
+
+    /// 지정가 주문구분 코드. 애프터마켓에서는 00 대신 41.
+    public static func limitOrderDivision(_ date: Date = Date()) -> String {
+        isKrxAfterMarket(date) ? "41" : "00"
     }
 
     /// 오늘 날짜 yyyyMMdd (한국 시간)

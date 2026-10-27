@@ -31,10 +31,12 @@ import CommonCrypto
         #expect(MarketClock.isNxtHour(kst(19, 59)))
         #expect(!MarketClock.isNxtHour(kst(20, 0)))
         #expect(MarketClock.todayString(kst(12, 0)) == "20260310")
-        #expect(MarketClock.orderExchange(kst(8, 30)) == "NXT")
-        #expect(MarketClock.orderExchange(kst(12, 0)) == "KRX")
-        #expect(MarketClock.orderExchange(kst(15, 30)) == "NXT")
-        #expect(MarketClock.orderExchange(kst(20, 0)) == "KRX")
+        #expect(!MarketClock.isKrxAfterMarket(kst(15, 59)))
+        #expect(MarketClock.isKrxAfterMarket(kst(16, 0)))
+        #expect(MarketClock.isKrxAfterMarket(kst(19, 59)))
+        #expect(!MarketClock.isKrxAfterMarket(kst(20, 0)))
+        #expect(MarketClock.limitOrderDivision(kst(12, 0)) == "00")
+        #expect(MarketClock.limitOrderDivision(kst(16, 0)) == "41")
     }
 
     @Test func formatting() {
