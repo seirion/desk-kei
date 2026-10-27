@@ -313,9 +313,19 @@ final class AppModel: ObservableObject {
             if !orderCode.isEmpty {
                 socket.subscribeTrades([orderCode])
                 socket.subscribeOrderBook([orderCode])
+                loadInitialOrderBook()
             }
         case .assets:
             break
+        }
+    }
+
+    /// 재구독하면 호가가 비워지는데 실시간 호가는 변동이 있어야 오므로, 그 사이를 REST 호가로 채운다.
+    private func loadInitialOrderBook() {
+        guard let client else { return }
+        let code = orderCode
+        Task {
+            if let book = try? await client.askingPrice(code: code) { setInitialOrderBook(book) }
         }
     }
 
