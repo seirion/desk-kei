@@ -160,6 +160,9 @@ public final class KisClient {
 
     public func placeOrder(_ req: OrderRequest) async throws -> OrderResult {
         guard account.hasTradingAccount else { throw KisError.notConfigured }
+        if req.type == .market, MarketClock.isKrxAfterMarket() {
+            throw KisError("애프터마켓(16:00~20:00)에는 시장가 주문을 할 수 없습니다.")
+        }
         let (cano, prdt) = account.accountParts
         let json = try await call(
             path: "/uapi/domestic-stock/v1/trading/order-cash",
@@ -168,7 +171,8 @@ public final class KisClient {
             body: [
                 "CANO": cano, "ACNT_PRDT_CD": prdt,
                 "PDNO": req.code,
-                "ORD_DVSN": req.type.rawValue,
+                "EXCG_ID_DVSN_CD": "KRX",
+                "ORD_DVSN": req.type == .market ? OrderType.market.rawValue : MarketClock.limitOrderDivision(),
                 "ORD_QTY": String(req.qty),
                 "ORD_UNPR": String(req.type == .market ? 0 : req.price),
             ])
@@ -195,7 +199,7 @@ public final class KisClient {
     }
 
     /// 미체결 주문 정정
-    public func modifyOrder(orderNo: String, qty: Int, price: Int) async throws -> OrderResult {
+    public func modifyOrder(orderNo: String, exchange: String, qty: Int, price: Int) async throws -> OrderResult {
         guard account.hasTradingAccount else { throw KisError.notConfigured }
         let (cano, prdt) = account.accountParts
         let json = try await call(
@@ -206,7 +210,8 @@ public final class KisClient {
                 "CANO": cano, "ACNT_PRDT_CD": prdt,
                 "KRX_FWDG_ORD_ORGNO": "",
                 "ORGN_ODNO": orderNo,
-                "ORD_DVSN": price > 0 ? "00" : "01",
+                "EXCG_ID_DVSN_CD": exchange.isEmpty ? "KRX" : exchange,
+                "ORD_DVSN": price > 0 ? MarketClock.limitOrderDivision() : "01",
                 "RVSE_CNCL_DVSN_CD": "01",
                 "ORD_QTY": String(qty),
                 "ORD_UNPR": String(price),
@@ -250,7 +255,8 @@ public final class KisClient {
                     remainQty: int(o["rmn_qty"]),
                     orderTime: str(o["ord_tmd"]),
                     status: str(o["ord_stts"]),
-                    orderType: str(o["ord_dvsn_name"])
+                    orderType: str(o["ord_dvsn_name"]),
+                    exchange: str(o["excg_id_dvsn_cd"])
                 ))
             }
 
