@@ -47,6 +47,7 @@ struct ContentView: View {
 
     private func page<V: View>(_ tab: AppTab, @ViewBuilder content: () -> V) -> some View {
         content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .opacity(model.tab == tab ? 1 : 0)
             .allowsHitTesting(model.tab == tab)
             .accessibilityHidden(model.tab != tab)
