@@ -1,7 +1,17 @@
+import AppKit
 import SwiftUI
+
+/// `swift run` 처럼 번들 없이 실행해도 일반 앱처럼 활성화되어 키보드 입력을 받게 한다.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
 
 @main
 struct DeskKeiApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 
     var body: some Scene {
