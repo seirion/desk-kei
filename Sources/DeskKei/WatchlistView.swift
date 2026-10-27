@@ -65,7 +65,7 @@ struct WatchlistView: View {
             Text("현재가" + (!MarketClock.isRegularHour() && MarketClock.isNxtHour() ? " / NXT" : ""))
                 .frame(width: 130, alignment: .trailing)
             Text("등락").frame(width: 170, alignment: .trailing)
-            Color.clear.frame(width: 56)
+            Color.clear.frame(width: 56, height: 1)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
