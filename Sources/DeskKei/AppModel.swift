@@ -192,6 +192,12 @@ final class AppModel: ObservableObject {
         if tab == .watchlist { applySubscription() }
     }
 
+    /// 현재 그룹의 종목을 주어진 순서로 바꾼다.
+    func setWatchCodes(_ codes: [String]) {
+        watchlist.groups[activeGroup] = codes
+        watchStore.save(watchlist)
+    }
+
     private func groupChanged(from old: Int) {
         guard old != activeGroup else { return }
         saveState()

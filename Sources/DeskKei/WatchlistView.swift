@@ -4,6 +4,7 @@ import SwiftUI
 struct WatchlistView: View {
     @EnvironmentObject var model: AppModel
     @State private var renaming: Int?
+    @State private var editing = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +36,7 @@ struct WatchlistView: View {
         .sheet(item: Binding(get: { renaming.map(GroupID.init) }, set: { renaming = $0?.index })) { g in
             RenameGroupSheet(index: g.index)
         }
+        .sheet(isPresented: $editing) { EditWatchlistSheet() }
     }
 
     private var groupTabs: some View {
@@ -65,7 +67,11 @@ struct WatchlistView: View {
             Text("현재가" + (!MarketClock.isRegularHour() && MarketClock.isNxtHour() ? " / NXT" : ""))
                 .frame(width: 130, alignment: .trailing)
             Text("등락").frame(width: 170, alignment: .trailing)
-            Color.clear.frame(width: 56, height: 1)
+            Button("편집") { editing = true }
+                .buttonStyle(.plain)
+                .foregroundStyle(model.currentCodes.count > 1 ? Color.accentColor : Color.secondary)
+                .disabled(model.currentCodes.count < 2)
+                .frame(width: 56)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -137,6 +143,45 @@ private struct WatchRow: View {
             Button("주문") { model.goToOrder(code: code, name: name) }
             Button("관심종목에서 제거", role: .destructive) { model.toggleWatch(code) }
         }
+    }
+}
+
+private struct EditWatchlistSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var codes: [String] = []
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("관심종목 편집 · \(model.groupName(model.activeGroup))").font(.headline)
+                Spacer()
+                Button("완료") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+            Text("종목을 끌어서 순서를 바꿉니다.")
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.bottom, 8)
+            Divider()
+            List {
+                ForEach(codes, id: \.self) { code in
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
+                        Text(model.stocks[code]?.nameKr ?? code).fontWeight(.medium)
+                        Text(code).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+                .onMove { from, to in
+                    codes.move(fromOffsets: from, toOffset: to)
+                    model.setWatchCodes(codes)
+                }
+            }
+        }
+        .frame(width: 420, height: 480)
+        .onAppear { codes = model.currentCodes }
     }
 }
 
