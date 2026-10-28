@@ -164,20 +164,9 @@ private struct EditWatchlistSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16).padding(.bottom, 8)
             Divider()
-            List {
-                ForEach(codes, id: \.self) { code in
-                    HStack(spacing: 8) {
-                        Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
-                        Text(model.stocks[code]?.nameKr ?? code).fontWeight(.medium)
-                        Text(code).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.vertical, 2)
-                }
-                .onMove { from, to in
-                    codes.move(fromOffsets: from, toOffset: to)
-                    model.setWatchCodes(codes)
-                }
+            ReorderableTable(rows: codes.map { ReorderRow(id: $0, title: model.stocks[$0]?.nameKr ?? $0, subtitle: $0) }) { order in
+                codes = order
+                model.setWatchCodes(order)
             }
         }
         .frame(width: 420, height: 480)
