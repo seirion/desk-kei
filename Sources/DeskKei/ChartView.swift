@@ -11,7 +11,8 @@ struct ChartView: View {
     let currentPrice: KisPrice?
 
     private static let periods: [(label: String, period: ChartPeriod)] = [
-        ("1분", .minute(1)), ("5분", .minute(5)), ("15분", .minute(15)), ("30분", .minute(30)), ("60분", .minute(60)),
+        ("1분", .minute(1)), ("3분", .minute(3)), ("5분", .minute(5)), ("10분", .minute(10)), ("15분", .minute(15)),
+        ("30분", .minute(30)), ("60분", .minute(60)),
         ("일", .day), ("주", .week), ("월", .month),
     ]
     private static let drawingTools: [(label: String, name: String)] = [
@@ -121,7 +122,7 @@ struct ChartView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 330)
+            .frame(width: 420)
 
             Spacer()
 

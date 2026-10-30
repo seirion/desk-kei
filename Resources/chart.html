@@ -139,7 +139,11 @@
         chart.removeIndicator({ name: name });
         delete indicators[name];
       } else {
-        if (main) chart.createIndicator({ name: name, paneId: 'candle_pane' }, true);
+        if (main) {
+          var spec = { name: name, paneId: 'candle_pane' };
+          if (name === 'MA') spec.calcParams = [5, 20, 60, 120];
+          chart.createIndicator(spec, true);
+        }
         else chart.createIndicator(name);
         indicators[name] = true;
       }
