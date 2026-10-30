@@ -99,6 +99,55 @@ public final class KisClient {
         return OrderBook(code: code, asks: asks, bids: bids)
     }
 
+    /// 오늘의 1분봉(08:00~20:00). KRX(정규장·애프터마켓) 에 NXT 프리마켓(08:00~09:00)을 이어 붙인다.
+    /// 호출 한 번에 120개씩 시간을 거슬러 올라가며 받는다.
+    public func minuteBars(code: String) async throws -> [MinuteBar] {
+        let main = try await minutePages(code: code, market: "J", from: "235959", stopAt: 9 * 60)
+        try? await Task.sleep(nanoseconds: 60_000_000)
+        let pre = try await minutePages(code: code, market: "NX", from: "085959", stopAt: MinuteChart.startMinute)
+        return MinuteChart.merge(pre + main)
+    }
+
+    private func minutePages(code: String, market: String, from: String, stopAt: Int) async throws -> [MinuteBar] {
+        let today = MarketClock.todayString()
+        var hour = from
+        var bars: [MinuteBar] = []
+        for _ in 0..<8 {
+            let json = try await withRateLimitRetry {
+                let json = try await self.call(path: "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice", trId: "FHKST03010230", query: [
+                    "FID_COND_MRKT_DIV_CODE": market,
+                    "FID_INPUT_ISCD": code,
+                    "FID_INPUT_HOUR_1": hour,
+                    "FID_INPUT_DATE_1": today,
+                    "FID_PW_DATA_INCU_YN": "N",
+                    "FID_FAKE_TICK_INCU_YN": "",
+                ])
+                try self.check(json, fallback: "분봉 조회 오류")
+                return json
+            }
+            let rows = (json["output2"] as? [[String: Any]]) ?? []
+            guard let last = rows.last.map({ str($0["stck_cntg_hour"]) }), last < hour else { break }
+            bars += MinuteChart.bars(from: rows, date: today)
+            let lastMinute = (Int(last.prefix(2)) ?? 0) * 60 + (Int(last.dropFirst(2).prefix(2)) ?? 0)
+            if rows.count < 120 || lastMinute <= stopAt { break }
+            hour = last
+            try? await Task.sleep(nanoseconds: 60_000_000)
+        }
+        return bars
+    }
+
+    /// 초당 거래건수 제한에 걸리면 잠시 기다렸다가 다시 시도한다.
+    private func withRateLimitRetry<T>(_ body: () async throws -> T) async throws -> T {
+        var attempt = 0
+        while true {
+            do { return try await body() }
+            catch let error as KisError where error.message.contains("초당") && attempt < 4 {
+                attempt += 1
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+        }
+    }
+
     // MARK: - 잔고
 
     public func balance() async throws -> (assets: [AssetItem], summary: AccountSummary) {

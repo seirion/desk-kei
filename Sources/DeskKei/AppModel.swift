@@ -45,6 +45,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var krxPrices: [String: KisPrice] = [:]
     @Published private(set) var nxtPrices: [String: KisPrice] = [:]
     @Published private(set) var priceLoading = false
+    @Published private(set) var charts: [String: [MinuteBar]] = [:]
 
     // 실시간 / 주문
     @Published private(set) var wsConnected = false
@@ -65,6 +66,9 @@ final class AppModel: ObservableObject {
 
     private var socket: KisWebSocket?
     private var priceTask: Task<Void, Never>?
+    private var chartTask: Task<Void, Never>?
+    private var chartFetchedAt: [String: Date] = [:]
+    private var chartDay = ""
     private var lastNxtState = MarketClock.isNxtHour()
     private var clockTimer: Timer?
     private var observers: [NSObjectProtocol] = []
@@ -249,9 +253,48 @@ final class AppModel: ObservableObject {
                 }
             }
             await MainActor.run { [weak self] in
-                if self?.activeGroup == group { self?.priceLoading = false }
+                guard let self, self.activeGroup == group else { return }
+                self.priceLoading = false
+                self.loadCharts()
             }
         }
+    }
+
+    /// 현재 그룹 종목의 1일 분봉 차트를 받는다. 최근 5분 안에 받은 종목은 건너뛴다.
+    private func loadCharts() {
+        chartTask?.cancel()
+        guard let client else { return }
+        let today = MarketClock.todayString()
+        if chartDay != today {
+            chartDay = today
+            charts = [:]
+            chartFetchedAt = [:]
+        }
+        let codes = currentCodes.filter { code in
+            chartFetchedAt[code].map { Date().timeIntervalSince($0) > 300 } ?? true
+        }
+        guard !codes.isEmpty else { return }
+        chartTask = Task { [weak self] in
+            for code in codes {
+                if Task.isCancelled { return }
+                guard let bars = try? await client.minuteBars(code: code) else { continue }
+                await MainActor.run { self?.setChart(code, bars) }
+                try? await Task.sleep(nanoseconds: 60_000_000)
+            }
+        }
+    }
+
+    private func setChart(_ code: String, _ bars: [MinuteBar]) {
+        // 조회하는 사이 실시간으로 이어 붙인 점이 더 최신이면 남긴다.
+        let newest = bars.last?.minute ?? -1
+        charts[code] = bars + (charts[code] ?? []).filter { $0.minute > newest }
+        chartFetchedAt[code] = Date()
+    }
+
+    private func appendLive(code: String, price: Int) {
+        guard var bars = charts[code] else { return }
+        MinuteChart.upsert(&bars, minute: MarketClock.minutes(Date()), price: price)
+        charts[code] = bars
     }
 
     private func fetchSingle(_ code: String) {
@@ -314,6 +357,7 @@ final class AppModel: ObservableObject {
 
     private func tabChanged() {
         saveState()
+        if tab == .watchlist { loadCharts() }
         // 탭을 옮길 때마다 재구독: 그 사이 시간대(정규장/NXT)가 바뀌었을 수 있다.
         applySubscription()
     }
@@ -364,6 +408,7 @@ final class AppModel: ObservableObject {
                 let price = KisPrice(price: t.price, prevPrice: prev, change: t.change, sign: t.sign, rate: t.rate,
                                      open: t.open, high: t.high, low: t.low, volume: t.volume)
                 if t.isNxt { nxtPrices[t.code] = price } else { krxPrices[t.code] = price }
+                appendLive(code: t.code, price: t.price)
             }
         case .orderBook(let book):
             if book.code == orderCode { orderBook = book }

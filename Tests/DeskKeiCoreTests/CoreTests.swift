@@ -253,3 +253,25 @@ import CommonCrypto
         #expect(!StockMaster.isCacheValid(kst(9, 18, 0), now: kst(10, 5, 0)))
     }
 }
+
+@Suite struct MinuteChartTests {
+    @Test func parsesTodaysBarsInOrder() {
+        let rows: [[String: Any]] = [
+            ["stck_bsop_date": "20261030", "stck_cntg_hour": "091500", "stck_prpr": "100"],
+            ["stck_bsop_date": "20261030", "stck_cntg_hour": "091400", "stck_prpr": "99"],
+            ["stck_bsop_date": "20261029", "stck_cntg_hour": "091300", "stck_prpr": "98"],
+            ["stck_bsop_date": "20261030", "stck_cntg_hour": "073000", "stck_prpr": "97"],
+        ]
+        #expect(MinuteChart.bars(from: rows, date: "20261030")
+                == [MinuteBar(minute: 554, price: 99), MinuteBar(minute: 555, price: 100)])
+    }
+
+    @Test func upsertUpdatesSameMinuteAndAppendsNewer() {
+        var bars = [MinuteBar(minute: 600, price: 1)]
+        MinuteChart.upsert(&bars, minute: 600, price: 2)
+        MinuteChart.upsert(&bars, minute: 601, price: 3)
+        MinuteChart.upsert(&bars, minute: 599, price: 9)    // 과거 분은 무시
+        MinuteChart.upsert(&bars, minute: 1300, price: 9)   // 20:00 이후는 무시
+        #expect(bars == [MinuteBar(minute: 600, price: 2), MinuteBar(minute: 601, price: 3)])
+    }
+}

@@ -8,7 +8,7 @@ public enum MarketClock {
         return cal
     }()
 
-    static func minutes(_ date: Date) -> Int {
+    public static func minutes(_ date: Date) -> Int {
         let c = calendar.dateComponents([.hour, .minute], from: date)
         return (c.hour ?? 0) * 60 + (c.minute ?? 0)
     }

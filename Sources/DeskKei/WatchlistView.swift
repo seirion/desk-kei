@@ -63,6 +63,7 @@ struct WatchlistView: View {
 
     private var header: some View {
         HStack {
+            Color.clear.frame(width: WatchRow.chartWidth, height: 1)
             Text("종목명").frame(maxWidth: .infinity, alignment: .leading)
             Text("현재가" + (!MarketClock.isRegularHour() && MarketClock.isNxtHour() ? " / NXT" : ""))
                 .frame(width: 130, alignment: .trailing)
@@ -86,6 +87,8 @@ private struct GroupID: Identifiable {
 }
 
 private struct WatchRow: View {
+    static let chartWidth: CGFloat = 84
+
     @EnvironmentObject var model: AppModel
     let code: String
 
@@ -100,6 +103,9 @@ private struct WatchRow: View {
         let krxChange = formatChange(change: krx?.change ?? 0, sign: krx?.sign ?? "3", rate: krx?.rate ?? 0)
 
         HStack {
+            Sparkline(bars: model.charts[code] ?? [], prevClose: krx?.prevPrice ?? info?.prevPrice ?? 0)
+                .frame(width: Self.chartWidth, height: 30)
+
             HStack(spacing: 4) {
                 Text(name).fontWeight(.medium)
                 if info?.halt == true { Badge(text: "정", color: .gray) }
