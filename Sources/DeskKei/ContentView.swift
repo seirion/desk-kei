@@ -43,6 +43,7 @@ struct ContentView: View {
         .navigationTitle(model.account.name.isEmpty ? "Desk Kei" : "Desk Kei · \(model.account.name)")
         .sheet(isPresented: $model.showAccounts) { AccountsSheet() }
         .sheet(isPresented: $model.showSearch) { SearchSheet() }
+        .sheet(isPresented: $model.showSettings) { SettingsSheet() }
     }
 
     private func page<V: View>(_ tab: AppTab, @ViewBuilder content: () -> V) -> some View {

@@ -27,9 +27,11 @@ public enum StockMaster {
     }
 
     /// 캐시 우선으로 불러오고, 마지막 갱신 시각 이후에 만든 캐시가 아니면 새로 받는다.
-    public static func load(store: JSONStore = JSONStore("master.json"), now: Date = Date()) async throws -> [String: StockInfo] {
+    /// `force` 면 캐시를 무시하고 새로 받으며, 실패해도 오래된 캐시로 대신하지 않고 오류를 던진다.
+    public static func load(store: JSONStore = JSONStore("master.json"), now: Date = Date(),
+                            force: Bool = false) async throws -> [String: StockInfo] {
         let cache = store.load(Cache.self)
-        if let cache, isCacheValid(cache.timestamp, now: now) { return cache.data }
+        if !force, let cache, isCacheValid(cache.timestamp, now: now) { return cache.data }
         do {
             async let kospi = download(.kospi)
             async let kosdaq = download(.kosdaq)
@@ -37,9 +39,14 @@ public enum StockMaster {
             store.save(Cache(timestamp: now, data: merged))
             return merged
         } catch {
-            if let cache { return cache.data }
+            if !force, let cache { return cache.data }
             throw error
         }
+    }
+
+    /// 캐시를 만든(내려받은) 시각
+    public static func cachedAt(store: JSONStore = JSONStore("master.json")) -> Date? {
+        store.load(Cache.self)?.timestamp
     }
 
     /// 현재 시각 기준 가장 최근 갱신 시각 이후에 만들어진 캐시인지

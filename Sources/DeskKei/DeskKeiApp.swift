@@ -35,6 +35,9 @@ struct DeskKeiApp: App {
                         .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: .command)
                 }
             }
+            CommandMenu("설정") {
+                Button("설정…") { model.showSettings = true }
+            }
         }
     }
 }

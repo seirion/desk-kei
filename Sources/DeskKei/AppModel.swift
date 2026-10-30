@@ -28,6 +28,7 @@ final class AppModel: ObservableObject {
     @Published var tab: AppTab { didSet { tabChanged() } }
     @Published var showAccounts = false
     @Published var showSearch = false
+    @Published var showSettings = false
     @Published var errorMessage: String?
 
     // 계정
@@ -36,6 +37,9 @@ final class AppModel: ObservableObject {
 
     // 종목 / 관심종목
     @Published private(set) var stocks: [String: StockInfo] = [:]
+    @Published private(set) var masterUpdatedAt: Date?
+    @Published private(set) var masterRefreshing = false
+    @Published private(set) var masterError: String?
     @Published private(set) var watchlist: WatchlistFile
     @Published var activeGroup: Int { didSet { groupChanged(from: oldValue) } }
     @Published private(set) var krxPrices: [String: KisPrice] = [:]
@@ -99,6 +103,21 @@ final class AppModel: ObservableObject {
     private func loadStocks() async {
         do { stocks = try await StockMaster.load() }
         catch { errorMessage = "종목 정보를 불러오지 못했습니다: \(error.localizedDescription)" }
+        masterUpdatedAt = StockMaster.cachedAt()
+    }
+
+    /// 캐시와 상관없이 종목 마스터를 지금 새로 받는다.
+    func refreshMaster() async {
+        guard !masterRefreshing else { return }
+        masterRefreshing = true
+        masterError = nil
+        defer { masterRefreshing = false }
+        do {
+            stocks = try await StockMaster.load(force: true)
+            masterUpdatedAt = StockMaster.cachedAt()
+        } catch {
+            masterError = "갱신하지 못했습니다: \(error.localizedDescription)"
+        }
     }
 
     /// 현재 계정으로 실시간 연결과 관심종목 시세 조회를 시작한다.

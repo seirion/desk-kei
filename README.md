@@ -73,6 +73,10 @@ open build/DeskKei.app
 | `⌘F` | 종목 검색 |
 | `⌘,` | 계정 관리 |
 
+### 설정
+
+상단 메뉴 `설정` → `설정…` 에서 앱 버전을 확인하고, `종목 마스터` 의 `지금 갱신` 으로 종목 마스터를 즉시 다시 내려받을 수 있습니다. 평소에는 앱을 시작할 때 갱신 시각을 따져 자동으로 받습니다.
+
 ### 시세 표기와 장 시간
 
 - 상승은 빨강, 하락은 파랑입니다.
@@ -127,6 +131,7 @@ swift test
 │       ├── OrderHistoryView.swift  # 주문내역 화면
 │       ├── SearchSheet.swift       # 종목 검색 창
 │       ├── AccountsSheet.swift     # 계정 관리 창
+│       ├── SettingsSheet.swift     # 설정 창 (앱 버전, 마스터 갱신)
 │       └── Theme.swift             # 색상과 공용 뷰
 └── Tests/
     └── DeskKeiCoreTests/       # 파서·복호화·포맷·저장소 단위 테스트
