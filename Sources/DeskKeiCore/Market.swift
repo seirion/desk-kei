@@ -36,6 +36,21 @@ public enum MarketClock {
         isKrxAfterMarket(date) ? "41" : "00"
     }
 
+    /// 시각 HHmmss (한국 시간)
+    public static func timeString(_ date: Date = Date()) -> String {
+        let c = calendar.dateComponents([.hour, .minute, .second], from: date)
+        return String(format: "%02d%02d%02d", c.hour ?? 0, c.minute ?? 0, c.second ?? 0)
+    }
+
+    /// "yyyyMMdd" (+ "HHmmss") 를 한국 시간 기준 Date 로. 시각이 없으면 그날 0시.
+    static func date(fromYmd ymd: String, hhmmss: String = "000000") -> Date? {
+        guard ymd.count == 8, hhmmss.count == 6,
+              let y = Int(ymd.prefix(4)), let mo = Int(ymd.dropFirst(4).prefix(2)), let d = Int(ymd.suffix(2)),
+              let h = Int(hhmmss.prefix(2)), let mi = Int(hhmmss.dropFirst(2).prefix(2)), let s = Int(hhmmss.suffix(2))
+        else { return nil }
+        return calendar.date(from: DateComponents(year: y, month: mo, day: d, hour: h, minute: mi, second: s))
+    }
+
     /// 오늘 날짜 yyyyMMdd (한국 시간)
     public static func todayString(_ date: Date = Date()) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)

@@ -275,3 +275,31 @@ import CommonCrypto
         #expect(bars == [MinuteBar(minute: 600, price: 2), MinuteBar(minute: 601, price: 3)])
     }
 }
+
+@Suite struct CandleSeriesTests {
+    private func kst(_ h: Int, _ m: Int) -> Int {
+        var c = DateComponents(); c.year = 2026; c.month = 3; c.day = 10; c.hour = h; c.minute = m
+        return Int(MarketClock.calendar.date(from: c)!.timeIntervalSince1970 * 1000)
+    }
+
+    @Test func aggregatesMinuteBarsIntoFiveMinuteCandles() {
+        let bars = [
+            Candle(timestamp: kst(9, 0), open: 100, high: 105, low: 99, close: 102, volume: 10),
+            Candle(timestamp: kst(9, 1), open: 102, high: 110, low: 101, close: 108, volume: 20),
+            Candle(timestamp: kst(9, 4), open: 108, high: 109, low: 95, close: 96, volume: 30),
+            Candle(timestamp: kst(9, 5), open: 96, high: 97, low: 94, close: 95, volume: 5),
+        ]
+        #expect(CandleSeries.aggregate(bars, minutes: 5) == [
+            Candle(timestamp: kst(9, 0), open: 100, high: 110, low: 95, close: 96, volume: 60),
+            Candle(timestamp: kst(9, 5), open: 96, high: 97, low: 94, close: 95, volume: 5),
+        ])
+        #expect(CandleSeries.aggregate(bars, minutes: 1) == bars)
+    }
+
+    @Test func mergeSortsAndKeepsLaterDuplicate() {
+        let a = Candle(timestamp: 2, open: 1, high: 1, low: 1, close: 1, volume: 1)
+        let b = Candle(timestamp: 1, open: 2, high: 2, low: 2, close: 2, volume: 2)
+        let a2 = Candle(timestamp: 2, open: 3, high: 3, low: 3, close: 3, volume: 3)
+        #expect(CandleSeries.merge([a, b, a2]) == [b, a2])
+    }
+}

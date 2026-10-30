@@ -13,6 +13,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/DeskKei"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# 차트 화면(WKWebView)이 읽는 파일
+cp Resources/chart.html Resources/klinecharts.min.js Resources/klinecharts-LICENSE.txt Resources/klinecharts-NOTICE.txt "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -136,6 +136,85 @@ public final class KisClient {
         return bars
     }
 
+    // MARK: - 차트
+
+    /// 1분봉(OHLCV). `before` 가 있으면 그 시각 직전부터, 없으면 지금부터 과거로 거슬러 올라가며
+    /// 120개씩 `pages` 번 받아 시간순으로 돌려준다.
+    public func minuteCandles(code: String, before: Date? = nil, pages: Int = 6) async throws -> [Candle] {
+        let start = before.map { $0.addingTimeInterval(-60) }
+        var date = start.map { MarketClock.todayString($0) } ?? MarketClock.todayString()
+        var hour = start.map { MarketClock.timeString($0) } ?? "235959"
+        var candles: [Candle] = []
+        for _ in 0..<pages {
+            let json = try await withRateLimitRetry {
+                let json = try await self.call(path: "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice", trId: "FHKST03010230", query: [
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": code,
+                    "FID_INPUT_HOUR_1": hour,
+                    "FID_INPUT_DATE_1": date,
+                    "FID_PW_DATA_INCU_YN": "Y",
+                    "FID_FAKE_TICK_INCU_YN": "",
+                ])
+                try self.check(json, fallback: "분봉 조회 오류")
+                return json
+            }
+            let rows = (json["output2"] as? [[String: Any]]) ?? []
+            guard let last = rows.last else { break }
+            candles += rows.compactMap { Self.minuteCandle($0) }
+            let nextDate = str(last["stck_bsop_date"]), nextHour = str(last["stck_cntg_hour"])
+            if rows.count < 120 || (nextDate == date && nextHour == hour) { break }
+            date = nextDate
+            hour = nextHour
+            try? await Task.sleep(nanoseconds: 60_000_000)
+        }
+        return CandleSeries.merge(candles)
+    }
+
+    /// 일/주/월봉. `endBefore` 가 있으면 그 날짜 이전, 없으면 오늘까지. 100개씩 `pages` 번 받는다.
+    public func periodCandles(code: String, period: ChartPeriod, endBefore: Date? = nil, pages: Int = 2) async throws -> [Candle] {
+        var end = endBefore.map { MarketClock.todayString($0.addingTimeInterval(-86_400)) } ?? MarketClock.todayString()
+        var candles: [Candle] = []
+        for _ in 0..<pages {
+            let json = try await withRateLimitRetry {
+                let json = try await self.call(path: "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice", trId: "FHKST03010100", query: [
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": code,
+                    "FID_INPUT_DATE_1": "19800101",
+                    "FID_INPUT_DATE_2": end,
+                    "FID_PERIOD_DIV_CODE": period.kisCode,
+                    "FID_ORG_ADJ_PRC": "0",
+                ])
+                try self.check(json, fallback: "봉 조회 오류")
+                return json
+            }
+            let rows = (json["output2"] as? [[String: Any]]) ?? []
+            guard let last = rows.last else { break }
+            candles += rows.compactMap { Self.periodCandle($0) }
+            guard rows.count >= 100, let lastDate = MarketClock.date(fromYmd: str(last["stck_bsop_date"])) else { break }
+            end = MarketClock.todayString(lastDate.addingTimeInterval(-86_400))
+            try? await Task.sleep(nanoseconds: 60_000_000)
+        }
+        return CandleSeries.merge(candles)
+    }
+
+    static func minuteCandle(_ row: [String: Any]) -> Candle? {
+        guard let time = MarketClock.date(fromYmd: str(row["stck_bsop_date"]), hhmmss: str(row["stck_cntg_hour"])) else { return nil }
+        let close = int(row["stck_prpr"])
+        guard close > 0 else { return nil }
+        return Candle(timestamp: Int(time.timeIntervalSince1970 * 1000),
+                      open: int(row["stck_oprc"]), high: int(row["stck_hgpr"]), low: int(row["stck_lwpr"]),
+                      close: close, volume: int(row["cntg_vol"]))
+    }
+
+    static func periodCandle(_ row: [String: Any]) -> Candle? {
+        guard let day = MarketClock.date(fromYmd: str(row["stck_bsop_date"])) else { return nil }
+        let close = int(row["stck_clpr"])
+        guard close > 0 else { return nil }
+        return Candle(timestamp: Int(day.timeIntervalSince1970 * 1000),
+                      open: int(row["stck_oprc"]), high: int(row["stck_hgpr"]), low: int(row["stck_lwpr"]),
+                      close: close, volume: int(row["acml_vol"]))
+    }
+
     /// 초당 거래건수 제한에 걸리면 잠시 기다렸다가 다시 시도한다.
     private func withRateLimitRetry<T>(_ body: () async throws -> T) async throws -> T {
         var attempt = 0

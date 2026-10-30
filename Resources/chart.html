@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>
+  html, body, #chart { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: Canvas; }
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<script>/*KLINECHARTS*/</script>
+<script>
+(function () {
+  var UP = '#E63836', DOWN = '#1E87E5', FLAT = '#888888';
+  var KST = 9 * 3600 * 1000;
+
+  function post(message) { window.webkit.messageHandlers.bridge.postMessage(message); }
+
+  var chart = klinecharts.init('chart', { timezone: 'Asia/Seoul' });
+  chart.setPeriod({ type: 'minute', span: 1 });
+
+  var scheme = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyStyles() {
+    chart.setStyles(scheme.matches ? 'dark' : 'light');
+    chart.setStyles({
+      candle: {
+        bar: {
+          upColor: UP, downColor: DOWN, noChangeColor: FLAT,
+          upBorderColor: UP, downBorderColor: DOWN, noChangeBorderColor: FLAT,
+          upWickColor: UP, downWickColor: DOWN, noChangeWickColor: FLAT
+        },
+        tooltip: { showRule: 'none' }
+      },
+      indicator: {
+        bars: [{ style: 'fill', borderStyle: 'solid', borderSize: 1, borderDashedValue: [2, 2],
+                 upColor: UP, downColor: DOWN, noChangeColor: FLAT }]
+      }
+    });
+  }
+  applyStyles();
+  scheme.addEventListener('change', applyStyles);
+
+  // 데이터는 Swift 가 조회해서 넘겨 준다.
+  var pending = {}, nextId = 0, barCallback = null, lastCumVolume = null;
+
+  chart.setDataLoader({
+    getBars: function (params) {
+      var id = ++nextId;
+      pending[id] = params.callback;
+      post({ type: 'getBars', id: id, loadType: params.type, timestamp: params.timestamp,
+             ticker: params.symbol.ticker, period: params.period });
+    },
+    subscribeBar: function (params) { barCallback = params.callback; },
+    unsubscribeBar: function () { barCallback = null; }
+  });
+
+  function notifyLatest() {
+    var list = chart.getDataList();
+    post({ type: 'latest', bar: list.length ? list[list.length - 1] : null });
+  }
+
+  // 십자선 이벤트에는 좌표만 오는 경우가 있어, 가로 좌표로 봉을 직접 찾는다.
+  chart.subscribeAction('onCrosshairChange', function (crosshair) {
+    var bar = null;
+    if (crosshair && crosshair.kLineData) {
+      bar = crosshair.kLineData;
+    } else if (crosshair && typeof crosshair.x === 'number') {
+      var points = chart.convertFromPixel([{ x: crosshair.x }], { paneId: crosshair.paneId || 'candle_pane' });
+      var point = Array.isArray(points) ? points[0] : points;
+      var list = chart.getDataList();
+      if (point && typeof point.dataIndex === 'number' && list[point.dataIndex]) bar = list[point.dataIndex];
+    }
+    post({ type: 'hover', bar: bar });
+  });
+
+  var indicators = {};
+  function reportIndicators() { post({ type: 'indicators', active: Object.keys(indicators) }); }
+
+  window.kei = {
+    deliver: function (id, bars, more) {
+      var callback = pending[id];
+      delete pending[id];
+      if (!callback) return;
+      // forward 는 과거(왼쪽) 방향이다.
+      callback(bars, { forward: more, backward: false });
+      notifyLatest();
+    },
+
+    setSymbol: function (ticker) {
+      chart.removeOverlay();
+      lastCumVolume = null;
+      chart.setSymbol({ ticker: ticker, pricePrecision: 0, volumePrecision: 0 });
+    },
+
+    setPeriod: function (type, span) {
+      lastCumVolume = null;
+      chart.setPeriod({ type: type, span: span });
+    },
+
+    // 실시간 체결로 마지막 봉을 갱신하거나 새 봉을 연다.
+    tick: function (price, cumVolume, timestamp) {
+      var list = chart.getDataList();
+      if (!list.length || !barCallback) return;
+      var period = chart.getPeriod();
+      var last = list[list.length - 1];
+      var bucket = last.timestamp;
+      if (period.type === 'minute') {
+        var ms = period.span * 60000;
+        bucket = Math.floor((timestamp + KST) / ms) * ms - KST;
+      } else if (period.type === 'day') {
+        bucket = Math.floor((timestamp + KST) / 86400000) * 86400000 - KST;
+      }
+      var delta = lastCumVolume !== null && cumVolume >= lastCumVolume ? cumVolume - lastCumVolume : 0;
+      lastCumVolume = cumVolume;
+
+      var bar;
+      if (bucket > last.timestamp) {
+        bar = { timestamp: bucket, open: price, high: price, low: price, close: price,
+                volume: period.type === 'day' ? cumVolume : delta };
+      } else if (bucket === last.timestamp) {
+        bar = { timestamp: last.timestamp, open: last.open,
+                high: Math.max(last.high, price), low: Math.min(last.low, price), close: price,
+                volume: period.type === 'day' ? cumVolume : (last.volume || 0) + delta };
+      } else {
+        return;
+      }
+      barCallback(bar);
+      notifyLatest();
+    },
+
+    draw: function (name) { chart.createOverlay(name); },
+    clearDrawings: function () { chart.removeOverlay(); },
+
+    // main 이 true 면 캔들 위에 겹치고, 아니면 아래에 별도 패널로 붙인다.
+    toggleIndicator: function (name, main) {
+      if (indicators[name]) {
+        chart.removeIndicator({ name: name });
+        delete indicators[name];
+      } else {
+        if (main) chart.createIndicator({ name: name, paneId: 'candle_pane' }, true);
+        else chart.createIndicator(name);
+        indicators[name] = true;
+      }
+      reportIndicators();
+    }
+  };
+
+  window.kei.toggleIndicator('MA', true);
+  window.kei.toggleIndicator('VOL', false);
+  post({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

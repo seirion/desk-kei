@@ -2,7 +2,7 @@ import DeskKeiCore
 import SwiftUI
 
 private enum OrderSubTab: String, CaseIterable, Identifiable {
-    case order = "주문", history = "주문내역"
+    case order = "주문", history = "주문내역", chart = "차트"
     var id: String { rawValue }
 }
 
@@ -34,6 +34,7 @@ struct OrderView: View {
     @State private var confirmMessage: String?
     @State private var modifyTarget: DailyOrderItem?
     @State private var started = false
+    @State private var chartVisited = false
 
     private let prefsStore = JSONStore("order.json")
 
@@ -44,7 +45,7 @@ struct OrderView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 220)
+            .frame(width: 300)
             .padding(10)
             Divider()
 
@@ -58,9 +59,18 @@ struct OrderView: View {
                         subTab = .order
                     }
                 }
+                // 차트는 처음 열 때 만들고, 이후에는 숨겨 두어 상태를 유지한다.
+                if chartVisited {
+                    ChartView(code: code, name: name, currentPrice: currentPrice)
+                        .opacity(subTab == .chart ? 1 : 0)
+                        .allowsHitTesting(subTab == .chart)
+                }
             }
         }
         .onAppear(perform: startIfNeeded)
+        .onChange(of: subTab) { tab in
+            if tab == .chart { chartVisited = true }
+        }
         .onChange(of: model.orderRequestToken) { _ in
             Task { await select(code: model.orderCode, name: model.orderRequestName) }
         }
