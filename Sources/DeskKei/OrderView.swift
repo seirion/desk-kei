@@ -6,7 +6,7 @@ private enum OrderSubTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-private enum Field { case price, qty, search }
+private enum Field { case price, qty }
 
 struct OrderView: View {
     @EnvironmentObject var model: AppModel
@@ -15,7 +15,6 @@ struct OrderView: View {
     @State private var side: OrderSide = .buy
     @State private var orderType: OrderType = .limit
 
-    @State private var searchQuery = ""
     @State private var prefs = JSONStore("order.json").load(OrderPrefsFile.self) ?? OrderPrefsFile()
     @FocusState private var focus: Field?
 
@@ -61,7 +60,9 @@ struct OrderView: View {
                 }
                 // 차트는 처음 열 때 만들고, 이후에는 숨겨 두어 상태를 유지한다.
                 if chartVisited {
-                    ChartView(code: code, name: name, currentPrice: currentPrice)
+                    ChartView(code: code, name: name, currentPrice: currentPrice, recent: prefs.recent) { code, name in
+                        Task { await select(code: code, name: name) }
+                    }
                         .opacity(subTab == .chart ? 1 : 0)
                         .allowsHitTesting(subTab == .chart)
                 }
@@ -155,51 +156,9 @@ struct OrderView: View {
     // MARK: 종목 검색 / 선택 정보
 
     private var stockSearch: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                TextField("종목명 또는 코드 검색", text: $searchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($focus, equals: .search)
-                    .onSubmit {
-                        if let first = searchResults.first { Task { await select(code: first.code, name: first.name) } }
-                    }
-                    .onExitCommand { searchQuery = ""; focus = nil }
-                if !searchQuery.isEmpty {
-                    Button { searchQuery = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                }
-            }
-            let suggestions: [(code: String, name: String, recent: Bool)] =
-                !searchResults.isEmpty
-                ? searchResults.map { ($0.code, $0.name, false) }
-                : (focus == .search && searchQuery.isEmpty ? prefs.recent.map { ($0.code, $0.name, true) } : [])
-            if !suggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    if suggestions.first?.recent == true {
-                        Text("최근 종목").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.top, 6)
-                    }
-                    ForEach(suggestions, id: \.code) { s in
-                        Button { Task { await select(code: s.code, name: s.name) } } label: {
-                            HStack {
-                                Text(s.name)
-                                Text(s.code).font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 8).padding(.vertical, 5)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .background(Color.cardBackground, in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
-                .padding(.top, 4)
-            }
+        StockSearchField(selectedCode: code, recent: prefs.recent) { code, name in
+            Task { await select(code: code, name: name) }
         }
-    }
-
-    private var searchResults: [StockSearch.Result] {
-        StockSearch.search(model.stocks, query: searchQuery, limit: 8)
     }
 
     @ViewBuilder
@@ -406,7 +365,6 @@ struct OrderView: View {
         name = model.stocks[newCode]?.nameKr ?? newName
         prefs.touch(code: newCode, name: name)
         prefsStore.save(prefs)
-        searchQuery = ""
         focus = nil
         currentPrice = nil
         inputPrice = ""

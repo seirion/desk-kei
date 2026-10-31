@@ -9,6 +9,8 @@ struct ChartView: View {
     let code: String
     let name: String
     let currentPrice: KisPrice?
+    let recent: [RecentStock]
+    let onSelect: (_ code: String, _ name: String) -> Void
 
     private static let periods: [(label: String, period: ChartPeriod)] = [
         ("1분", .minute(1)), ("3분", .minute(3)), ("5분", .minute(5)), ("10분", .minute(10)), ("15분", .minute(15)),
@@ -29,6 +31,11 @@ struct ChartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            StockSearchField(selectedCode: code, recent: recent, floating: true, onSelect: onSelect)
+                .frame(width: 300)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
             header
             Divider()
             toolbar
