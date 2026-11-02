@@ -339,8 +339,12 @@ struct OrderView: View {
 
     private var quickRow: some View {
         HStack {
-            ForEach([10, 25, 50, 100], id: \.self) { pct in
-                Button("\(pct)%") { setQty(percent: pct) }
+            ForEach([1, 2, 5, 10], id: \.self) { qty in
+                Button("\(qty)주") { inputQty = String(qty) }
+            }
+            if side == .sell {
+                Button("전부") { sellAll() }
+                    .disabled(holdingQty == nil)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
@@ -445,13 +449,12 @@ struct OrderView: View {
         }
     }
 
-    private func setQty(percent: Int) {
-        let ratio = Double(percent) / 100
-        if side == .buy, let buyable {
-            inputQty = String(Int(Double(buyable.maxBuyQty) * ratio))
-        } else if side == .sell, let h = holdings.first(where: { $0.code == code }) {
-            inputQty = String(Int(Double(h.holdingQty) * ratio))
-        }
+    private var holdingQty: Int? {
+        holdings.first(where: { $0.code == code })?.holdingQty
+    }
+
+    private func sellAll() {
+        if let holdingQty { inputQty = String(holdingQty) }
     }
 
     private func askConfirm() {
