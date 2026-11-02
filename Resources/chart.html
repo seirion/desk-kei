@@ -76,6 +76,18 @@
   });
 
   var indicators = {};
+
+  // 볼린저밴드의 중심선은 20 이동평균과 값이 같아 겹친다. 볼린저가 켜져 있으면
+  // 20 이평선을 굵고 반투명하게 깔아 두 선이 모두 보이게 한다.
+  var MA_COLORS = ['#FF9600', '#935EBD', '#1677FF', '#E11D74', '#01C5C4'];
+  function syncMaStyle() {
+    if (!indicators.MA) return;
+    var lines = MA_COLORS.map(function (color) {
+      return { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2], color: color };
+    });
+    if (indicators.BOLL) { lines[1].size = 4; lines[1].color = 'rgba(147, 94, 189, 0.45)'; }
+    chart.overrideIndicator({ name: 'MA', styles: { lines: lines } }, 'candle_pane');
+  }
   function reportIndicators() { post({ type: 'indicators', active: Object.keys(indicators) }); }
 
   window.kei = {
@@ -147,6 +159,7 @@
         else chart.createIndicator(name);
         indicators[name] = true;
       }
+      syncMaStyle();
       reportIndicators();
     }
   };
