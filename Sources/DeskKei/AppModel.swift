@@ -178,6 +178,9 @@ final class AppModel: ObservableObject {
         accountsStore.save(file)
     }
 
+    /// 총자산·보유 종목을 다시 불러온다.
+    func refreshAssets() { assetsVersion += 1 }
+
     private func accountChanged() {
         assetsVersion += 1
         krxPrices = [:]

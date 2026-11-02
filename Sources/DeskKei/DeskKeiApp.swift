@@ -34,6 +34,10 @@ struct DeskKeiApp: App {
                     Button(tab.title) { model.tab = tab }
                         .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: .command)
                 }
+                Divider()
+                Button("새로고침") { model.refreshAssets() }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(model.tab != .assets)
             }
             CommandMenu("설정") {
                 Button("설정…") { model.showSettings = true }
