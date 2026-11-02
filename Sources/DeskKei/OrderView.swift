@@ -522,6 +522,13 @@ private struct OrderBookPanel: View {
         }
     }
 
+    /// 전일 종가(기준가) 대비 등락률(%). 빈 호가나 기준가 없음이면 nil.
+    private func changeRate(_ price: Int) -> (value: Double, tint: Color)? {
+        guard price > 0, let prev = currentPrice?.prevPrice, prev > 0 else { return nil }
+        let value = Double(price - prev) / Double(prev) * 100
+        return (value, price > prev ? .up : price < prev ? .down : .secondary)
+    }
+
     private func row(_ level: OrderBookLevel, maxQty: Int, tint: Color, qtyFirst: Bool) -> some View {
         let qty = ZStack(alignment: qtyFirst ? .trailing : .leading) {
             GeometryReader { geo in
@@ -531,7 +538,16 @@ private struct OrderBookPanel: View {
             }
             Text(fmt(level.qty)).font(.caption).padding(.horizontal, 4)
         }
-        let price = Text(fmt(level.price)).foregroundStyle(tint).frame(maxWidth: .infinity, alignment: qtyFirst ? .leading : .trailing).padding(.horizontal, 6)
+        let price = HStack(spacing: 4) {
+            Text(fmt(level.price)).foregroundStyle(tint)
+            if let rate = changeRate(level.price) {
+                Text(fmtRate(abs(rate.value), signed: false)).font(.system(size: 10)).foregroundStyle(rate.tint)
+            }
+        }
+        .fixedSize()
+        .padding(.horizontal, 6)
+        .layoutPriority(1)
+        .frame(maxWidth: .infinity, alignment: qtyFirst ? .leading : .trailing)
         return Button { if level.price > 0 { onPick(level.price) } } label: {
             HStack(spacing: 0) {
                 if qtyFirst { qty; price } else { price; qty }
