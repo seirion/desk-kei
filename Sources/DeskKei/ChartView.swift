@@ -10,6 +10,7 @@ struct ChartView: View {
     let name: String
     let currentPrice: KisPrice?
     let recent: [RecentStock]
+    let onRemoveRecent: (_ code: String) -> Void
     let onSelect: (_ code: String, _ name: String) -> Void
 
     private static let periods: [(label: String, period: ChartPeriod)] = [
@@ -31,7 +32,7 @@ struct ChartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            StockSearchField(selectedCode: code, recent: recent, floating: true, onSelect: onSelect)
+            StockSearchField(selectedCode: code, recent: recent, onRemoveRecent: onRemoveRecent, floating: true, onSelect: onSelect)
                 .frame(width: 300)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)

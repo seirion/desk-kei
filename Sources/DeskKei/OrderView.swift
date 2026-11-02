@@ -60,7 +60,7 @@ struct OrderView: View {
                 }
                 // 차트는 처음 열 때 만들고, 이후에는 숨겨 두어 상태를 유지한다.
                 if chartVisited {
-                    ChartView(code: code, name: name, currentPrice: currentPrice, recent: prefs.recent) { code, name in
+                    ChartView(code: code, name: name, currentPrice: currentPrice, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
                         Task { await select(code: code, name: name) }
                     }
                         .opacity(subTab == .chart ? 1 : 0)
@@ -156,7 +156,7 @@ struct OrderView: View {
     // MARK: 종목 검색 / 선택 정보
 
     private var stockSearch: some View {
-        StockSearchField(selectedCode: code, recent: prefs.recent) { code, name in
+        StockSearchField(selectedCode: code, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
             Task { await select(code: code, name: name) }
         }
     }
@@ -362,6 +362,11 @@ struct OrderView: View {
             await select(code: startCode, name: startName)
             await loadHoldings()
         }
+    }
+
+    private func removeRecent(code: String) {
+        prefs.removeRecent(code: code)
+        prefsStore.save(prefs)
     }
 
     private func select(code newCode: String, name newName: String) async {

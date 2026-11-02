@@ -78,6 +78,10 @@ public struct OrderPrefsFile: Codable {
         recent.insert(last, at: 0)
         if recent.count > Self.recentMax { recent = Array(recent.prefix(Self.recentMax)) }
     }
+
+    public mutating func removeRecent(code: String) {
+        recent.removeAll { $0.code == code }
+    }
 }
 
 public struct AppStateFile: Codable {
