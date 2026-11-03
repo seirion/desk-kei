@@ -27,6 +27,9 @@ swift run DeskKei
 # 앱 번들(build/DeskKei.app) 생성
 Scripts/build-app.sh
 open build/DeskKei.app
+
+# 번들을 만들어 /Applications 에 설치 (실행 중이면 종료 후 교체하고 다시 열기)
+Scripts/deploy-app.sh
 ```
 
 번들은 ad-hoc 서명이므로 다른 Mac 으로 옮기면 Gatekeeper 가 막을 수 있습니다. 그때는 앱을 우클릭 → 열기 로 실행하세요.
@@ -126,6 +129,7 @@ swift test
 │   ├── klinecharts.min.js      # KLineChart 10.1.0 (+ LICENSE, NOTICE)
 ├── Scripts/
 │   ├── build-app.sh            # release 빌드 후 DeskKei.app 번들 생성
+│   ├── deploy-app.sh           # 번들을 만들어 /Applications 에 설치
 │   └── make-icon.swift         # 아이콘 원본 PNG(1024x1024)를 그리는 스크립트
 ├── Sources/
 │   ├── DeskKeiCore/            # UI 와 무관한 로직 (테스트 대상)
