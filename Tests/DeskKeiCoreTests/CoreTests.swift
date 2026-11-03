@@ -98,6 +98,14 @@ import CommonCrypto
         let perms = try FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent("a.json").path)[.posixPermissions] as? Int
         #expect(perms == 0o600)
     }
+
+    @Test func appStateKeepsLegacyFileWithoutAppearance() throws {
+        let legacy = Data(#"{"lastTab":"order","activeGroup":3}"#.utf8)
+        let state = try JSONDecoder().decode(AppStateFile.self, from: legacy)
+        #expect(state.lastTab == "order")
+        #expect(state.activeGroup == 3)
+        #expect(state.appearance == "system")
+    }
 }
 
 @Suite struct RealtimeDecoderTests {
