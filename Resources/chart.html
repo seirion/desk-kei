@@ -113,6 +113,21 @@
     if (indicators.BOLL) { lines[1].size = 4; lines[1].color = 'rgba(147, 94, 189, 0.45)'; }
     chart.overrideIndicator({ name: 'MA', styles: { lines: lines } }, 'candle_pane');
   }
+  var KNOWN = { MA: 'main', BOLL: 'main', VOL: 'pane', MACD: 'pane', RSI: 'pane', KDJ: 'pane' };
+  function addIndicator(name, main) {
+    if (main) {
+      var spec = { name: name, paneId: 'candle_pane' };
+      if (name === 'MA') spec.calcParams = [5, 20, 60, 120];
+      chart.createIndicator(spec, true);
+    } else {
+      chart.createIndicator(name);
+    }
+    indicators[name] = true;
+  }
+  function removeIndicator(name) {
+    chart.removeIndicator({ name: name });
+    delete indicators[name];
+  }
   function reportIndicators() { post({ type: 'indicators', active: Object.keys(indicators) }); }
 
   window.kei = {
@@ -174,18 +189,17 @@
 
     // main 이 true 면 캔들 위에 겹치고, 아니면 아래에 별도 패널로 붙인다.
     toggleIndicator: function (name, main) {
-      if (indicators[name]) {
-        chart.removeIndicator({ name: name });
-        delete indicators[name];
-      } else {
-        if (main) {
-          var spec = { name: name, paneId: 'candle_pane' };
-          if (name === 'MA') spec.calcParams = [5, 20, 60, 120];
-          chart.createIndicator(spec, true);
-        }
-        else chart.createIndicator(name);
-        indicators[name] = true;
-      }
+      if (indicators[name]) removeIndicator(name); else addIndicator(name, main);
+      syncMaStyle();
+      reportIndicators();
+    },
+
+    // 저장해 둔 지표 목록으로 맞춘다. 목록에 없는 것은 끄고, 없는 것은 목록 순서대로 켠다.
+    setIndicators: function (names) {
+      var wanted = {};
+      names.forEach(function (n) { if (KNOWN[n]) wanted[n] = true; });
+      Object.keys(indicators).forEach(function (n) { if (!wanted[n]) removeIndicator(n); });
+      names.forEach(function (n) { if (KNOWN[n] && !indicators[n]) addIndicator(n, KNOWN[n] === 'main'); });
       syncMaStyle();
       reportIndicators();
     }

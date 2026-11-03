@@ -84,6 +84,12 @@ public struct OrderPrefsFile: Codable {
     }
 }
 
+/// 차트 설정. indicators 가 nil 이면 저장된 적이 없는 것으로 보고 기본 지표(MA, VOL)를 쓴다.
+public struct ChartPrefsFile: Codable, Equatable {
+    public var indicators: [String]?
+    public init(indicators: [String]? = nil) { self.indicators = indicators }
+}
+
 public struct AppStateFile: Codable {
     public var lastTab: String = "watchlist"
     public var activeGroup: Int = 0

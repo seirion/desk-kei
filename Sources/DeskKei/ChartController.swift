@@ -22,6 +22,9 @@ final class ChartController: NSObject, ObservableObject {
     let webView: WKWebView
     var client: () -> KisClient? = { nil }
 
+    private let prefsStore = JSONStore("chart.json")
+    /// 저장된 지표를 되살리기 전에 오는 지표 알림(기본 지표)이 저장값을 덮어쓰지 않게 한다.
+    private var indicatorsRestored = false
     private var ready = false
     private var code = ""
     private var requested = ""
@@ -61,6 +64,15 @@ final class ChartController: NSObject, ObservableObject {
     func draw(_ tool: String) { run("kei.draw('\(tool)')") }
     func clearDrawings() { run("kei.clearDrawings()") }
     func toggleIndicator(_ name: String, onCandle: Bool) { run("kei.toggleIndicator('\(name)', \(onCandle))") }
+
+    /// 저장된 지표 구성이 있으면 그대로 맞춘다. 없으면 페이지의 기본 지표를 유지한다.
+    private func restoreIndicators() {
+        indicatorsRestored = true
+        guard let saved = prefsStore.load(ChartPrefsFile.self)?.indicators,
+              let data = try? JSONSerialization.data(withJSONObject: saved),
+              let json = String(data: data, encoding: .utf8) else { return }
+        run("kei.setIndicators(\(json))")
+    }
 
     // MARK: 페이지
 
@@ -150,6 +162,7 @@ final class ChartController: NSObject, ObservableObject {
         switch body["type"] as? String {
         case "ready":
             ready = true
+            restoreIndicators()
             let (type, span) = period.jsArguments
             run("kei.setPeriod('\(type)', \(span))")
             applySymbolIfReady()
@@ -166,7 +179,9 @@ final class ChartController: NSObject, ObservableObject {
         case "latest":
             readout.latest = Self.candle(body["bar"])
         case "indicators":
-            indicators = Set((body["active"] as? [String]) ?? [])
+            let active = (body["active"] as? [String]) ?? []
+            indicators = Set(active)
+            if indicatorsRestored { prefsStore.save(ChartPrefsFile(indicators: active)) }
         default:
             break
         }
