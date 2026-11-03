@@ -60,7 +60,7 @@ struct OrderView: View {
                 }
                 // 차트는 처음 열 때 만들고, 이후에는 숨겨 두어 상태를 유지한다.
                 if chartVisited {
-                    ChartView(code: code, name: name, currentPrice: currentPrice, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
+                    ChartView(live: model.live, client: { model.client }, code: code, name: name, currentPrice: currentPrice, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
                         Task { await select(code: code, name: name) }
                     }
                         .opacity(subTab == .chart ? 1 : 0)
@@ -103,7 +103,7 @@ struct OrderView: View {
 
     private var orderLayout: some View {
         HStack(alignment: .top, spacing: 0) {
-            OrderBookPanel(currentPrice: currentPrice, hasCode: !code.isEmpty) { inputPrice = String($0) }
+            OrderBookPanel(live: model.live, currentPrice: currentPrice, hasCode: !code.isEmpty) { inputPrice = String($0) }
                 .frame(width: 240)
             Divider()
             ScrollView {
@@ -177,35 +177,8 @@ struct OrderView: View {
                             .foregroundStyle(color(for: c.direction)).fontWeight(.semibold).monospacedDigit()
                     }
                 }
-                if currentPrice != nil || liveTrade != nil { ohlcv }
+                OHLCVRow(live: model.live, code: code, currentPrice: currentPrice)
             }
-        }
-    }
-
-    private var liveTrade: RealTimeTrade? {
-        model.liveTrade?.code == code ? model.liveTrade : nil
-    }
-
-    private var ohlcv: some View {
-        let open = liveTrade?.open ?? currentPrice?.open ?? 0
-        let high = liveTrade?.high ?? currentPrice?.high ?? 0
-        let low = liveTrade?.low ?? currentPrice?.low ?? 0
-        let close = liveTrade?.price ?? currentPrice?.price ?? 0
-        let vol = liveTrade?.volume ?? currentPrice?.volume ?? 0
-        return HStack(spacing: 14) {
-            ohlcvItem("시", fmt(open), .primary)
-            ohlcvItem("고", fmt(high), .up)
-            ohlcvItem("저", fmt(low), .down)
-            ohlcvItem("종", fmt(close), .primary)
-            ohlcvItem("량", formatVolume(vol), .primary)
-        }
-        .font(.callout).monospacedDigit()
-    }
-
-    private func ohlcvItem(_ label: String, _ value: String, _ tint: Color) -> some View {
-        HStack(spacing: 3) {
-            Text(label).foregroundStyle(tint == .primary ? Color.secondary : tint).font(.caption)
-            Text(value).foregroundStyle(tint)
         }
     }
 
@@ -457,7 +430,7 @@ struct OrderView: View {
 // MARK: - 호가창
 
 private struct OrderBookPanel: View {
-    @EnvironmentObject var model: AppModel
+    @ObservedObject var live: LiveMarket
     let currentPrice: KisPrice?
     let hasCode: Bool
     let onPick: (Int) -> Void
@@ -468,7 +441,7 @@ private struct OrderBookPanel: View {
             Divider()
             if !hasCode {
                 placeholder("종목을 선택하세요")
-            } else if let book = model.orderBook {
+            } else if let book = live.orderBook {
                 table(book)
             } else {
                 placeholder("호가 수신 대기 중…")
@@ -557,5 +530,35 @@ private struct OrderBookPanel: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 시·고·저·종·거래량
+
+/// 체결마다 갱신되므로 주문 화면과 분리해 이 뷰만 다시 그린다.
+private struct OHLCVRow: View {
+    @ObservedObject var live: LiveMarket
+    let code: String
+    let currentPrice: KisPrice?
+
+    var body: some View {
+        let trade = live.liveTrade?.code == code ? live.liveTrade : nil
+        if currentPrice != nil || trade != nil {
+            HStack(spacing: 14) {
+                item("시", fmt(trade?.open ?? currentPrice?.open ?? 0), .primary)
+                item("고", fmt(trade?.high ?? currentPrice?.high ?? 0), .up)
+                item("저", fmt(trade?.low ?? currentPrice?.low ?? 0), .down)
+                item("종", fmt(trade?.price ?? currentPrice?.price ?? 0), .primary)
+                item("량", formatVolume(trade?.volume ?? currentPrice?.volume ?? 0), .primary)
+            }
+            .font(.callout).monospacedDigit()
+        }
+    }
+
+    private func item(_ label: String, _ value: String, _ tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(label).foregroundStyle(tint == .primary ? Color.secondary : tint).font(.caption)
+            Text(value).foregroundStyle(tint)
+        }
     }
 }
