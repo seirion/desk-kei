@@ -22,6 +22,25 @@ enum AppTab: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: return "시스템"
+        case .light: return "라이트"
+        case .dark: return "다크"
+        }
+    }
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 @MainActor
 final class LiveMarket: ObservableObject {
     @Published var orderBook: OrderBook?
@@ -48,6 +67,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var masterError: String?
     @Published private(set) var watchlist: WatchlistFile
     @Published var activeGroup: Int { didSet { groupChanged(from: oldValue) } }
+    @Published var appearance: AppearanceMode {
+        didSet {
+            NSApplication.shared.appearance = appearance.nsAppearance
+            saveState()
+        }
+    }
     @Published private(set) var krxPrices: [String: KisPrice] = [:]
     @Published private(set) var nxtPrices: [String: KisPrice] = [:]
     @Published private(set) var priceLoading = false
@@ -91,6 +116,7 @@ final class AppModel: ObservableObject {
         let state = stateStore.load(AppStateFile.self) ?? AppStateFile()
         tab = AppTab(rawValue: state.lastTab) ?? .watchlist
         activeGroup = min(max(state.activeGroup, 0), WatchlistFile.groupCount - 1)
+        appearance = AppearanceMode(rawValue: state.appearance) ?? .system
 
         orderCode = (prefsStore.load(OrderPrefsFile.self) ?? OrderPrefsFile()).last.code
     }
@@ -98,6 +124,7 @@ final class AppModel: ObservableObject {
     // MARK: - 시작
 
     func start() {
+        NSApplication.shared.appearance = appearance.nsAppearance
         Task { await loadStocks() }
         if account.hasCredentials { Task { await startSession() } } else { showAccounts = accounts.isEmpty }
 
@@ -439,6 +466,7 @@ final class AppModel: ObservableObject {
         var s = AppStateFile()
         s.lastTab = tab.rawValue
         s.activeGroup = activeGroup
+        s.appearance = appearance.rawValue
         stateStore.save(s)
     }
 }

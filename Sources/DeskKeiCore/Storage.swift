@@ -87,7 +87,16 @@ public struct OrderPrefsFile: Codable {
 public struct AppStateFile: Codable {
     public var lastTab: String = "watchlist"
     public var activeGroup: Int = 0
+    /// system / light / dark
+    public var appearance: String = "system"
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lastTab = try c.decodeIfPresent(String.self, forKey: .lastTab) ?? lastTab
+        activeGroup = try c.decodeIfPresent(Int.self, forKey: .activeGroup) ?? activeGroup
+        appearance = try c.decodeIfPresent(String.self, forKey: .appearance) ?? appearance
+    }
 }
 
 struct CachedToken: Codable {

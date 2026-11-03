@@ -18,6 +18,15 @@ struct SettingsSheet: View {
 
             row("앱 버전") { Text(version) }
 
+            row("화면 모드") {
+                Picker("화면 모드", selection: $model.appearance) {
+                    ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+            }
+
             row("종목 마스터") {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {
