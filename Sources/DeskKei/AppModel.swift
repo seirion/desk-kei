@@ -23,6 +23,12 @@ enum AppTab: String, CaseIterable, Identifiable {
 }
 
 @MainActor
+final class LiveMarket: ObservableObject {
+    @Published var orderBook: OrderBook?
+    @Published var liveTrade: RealTimeTrade?
+}
+
+@MainActor
 final class AppModel: ObservableObject {
     // 화면 상태
     @Published var tab: AppTab { didSet { tabChanged() } }
@@ -50,8 +56,8 @@ final class AppModel: ObservableObject {
     // 실시간 / 주문
     @Published private(set) var wsConnected = false
     @Published private(set) var toasts: [OrderExecution] = []
-    @Published private(set) var orderBook: OrderBook?
-    @Published private(set) var liveTrade: RealTimeTrade?
+    /// 호가·체결은 초당 여러 번 바뀌므로 AppModel 과 분리해, 필요한 뷰만 구독한다.
+    let live = LiveMarket()
     @Published private(set) var orderCode: String
     /// 외부(주문 버튼)에서 주문 화면의 종목을 바꿀 때마다 증가
     @Published private(set) var orderRequestToken = 0
@@ -321,14 +327,14 @@ final class AppModel: ObservableObject {
     func orderStockChanged(code: String) {
         guard code != orderCode else { return }
         orderCode = code
-        orderBook = nil
-        liveTrade = nil
+        live.orderBook = nil
+        live.liveTrade = nil
         if tab == .order { applySubscription() }
     }
 
     /// REST 로 받아온 초기 호가. 실시간 호가가 아직 없을 때만 반영한다.
     func setInitialOrderBook(_ book: OrderBook) {
-        if orderBook == nil, book.code == orderCode { orderBook = book }
+        if live.orderBook == nil, book.code == orderCode { live.orderBook = book }
     }
 
     // MARK: - 실시간
@@ -376,8 +382,8 @@ final class AppModel: ObservableObject {
     private func applySubscription() {
         guard let socket else { return }
         socket.unsubscribeAll()
-        orderBook = nil
-        liveTrade = nil
+        live.orderBook = nil
+        live.liveTrade = nil
         switch tab {
         case .watchlist:
             socket.subscribeTrades(currentCodes)
@@ -405,7 +411,7 @@ final class AppModel: ObservableObject {
         switch event {
         case .trade(let t):
             if tab == .order {
-                if t.code == orderCode { liveTrade = t }
+                if t.code == orderCode { live.liveTrade = t }
             } else {
                 let prev = t.price - (t.sign == "4" || t.sign == "5" ? -t.change : t.change)
                 let price = KisPrice(price: t.price, prevPrice: prev, change: t.change, sign: t.sign, rate: t.rate,
@@ -414,7 +420,7 @@ final class AppModel: ObservableObject {
                 appendLive(code: t.code, price: t.price)
             }
         case .orderBook(let book):
-            if book.code == orderCode { orderBook = book }
+            if book.code == orderCode { live.orderBook = book }
         case .execution(let exec):
             toasts.append(exec)
             assetsVersion += 1

@@ -4,12 +4,17 @@ import WebKit
 
 /// KLineChart(Resources/klinecharts.min.js) 를 WKWebView 에 올리고 Swift 와 데이터를 주고받는다.
 /// 차트가 필요한 봉은 `getBars` 메시지로 요청하고, 조회한 결과를 `kei.deliver` 로 돌려준다.
+/// 마우스가 가리키는 봉 (없으면 nil)과 차트의 가장 최근 봉
+@MainActor
+final class ChartReadout: ObservableObject {
+    @Published var hovered: Candle?
+    @Published var latest: Candle?
+}
+
 @MainActor
 final class ChartController: NSObject, ObservableObject {
-    /// 마우스가 가리키는 봉 (없으면 nil)
-    @Published private(set) var hovered: Candle?
-    /// 차트의 가장 최근 봉
-    @Published private(set) var latest: Candle?
+    /// 마우스가 가리키는 봉과 최근 봉. 자주 바뀌므로 화면 전체가 아닌 표시 뷰만 구독한다.
+    let readout = ChartReadout()
     @Published private(set) var indicators: Set<String> = []
     @Published private(set) var period: ChartPeriod = .minute(1)
     @Published private(set) var errorMessage: String?
@@ -81,8 +86,8 @@ final class ChartController: NSObject, ObservableObject {
     private func applySymbolIfReady() {
         guard ready, !code.isEmpty, code != requested else { return }
         requested = code
-        hovered = nil
-        latest = nil
+        readout.hovered = nil
+        readout.latest = nil
         minuteRaw = []
         generation += 1
         run("kei.setSymbol('\(code)')")
@@ -157,9 +162,9 @@ final class ChartController: NSObject, ObservableObject {
             else { return }
             loadBars(id: id, loadType: loadType, timestamp: body["timestamp"] as? Double, period: period, ticker: ticker)
         case "hover":
-            hovered = Self.candle(body["bar"])
+            readout.hovered = Self.candle(body["bar"])
         case "latest":
-            latest = Self.candle(body["bar"])
+            readout.latest = Self.candle(body["bar"])
         case "indicators":
             indicators = Set((body["active"] as? [String]) ?? [])
         default:

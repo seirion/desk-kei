@@ -3,9 +3,10 @@ import SwiftUI
 
 /// 주문 화면의 차트 탭: 상단에 종목·실시간 가격·OHLCV, 아래에 캔들 차트.
 struct ChartView: View {
-    @EnvironmentObject var model: AppModel
     @StateObject private var chart = ChartController()
 
+    let live: LiveMarket
+    let client: () -> KisClient?
     let code: String
     let name: String
     let currentPrice: KisPrice?
@@ -26,10 +27,6 @@ struct ChartView: View {
     private static let candleIndicators = [("이동평균 (MA)", "MA"), ("볼린저밴드 (BOLL)", "BOLL")]
     private static let paneIndicators = [("거래량 (VOL)", "VOL"), ("MACD", "MACD"), ("RSI", "RSI"), ("KDJ", "KDJ")]
 
-    private var liveTrade: RealTimeTrade? {
-        model.liveTrade?.code == code ? model.liveTrade : nil
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             StockSearchField(selectedCode: code, recent: recent, onRemoveRecent: onRemoveRecent, floating: true, onSelect: onSelect)
@@ -46,13 +43,11 @@ struct ChartView: View {
             ChartWebView(controller: chart)
         }
         .onAppear {
-            chart.client = { model.client }
+            chart.client = client
             chart.show(code: code)
         }
         .onChange(of: code) { chart.show(code: $0) }
-        .onChange(of: model.liveTrade) { trade in
-            if let trade { chart.tick(trade) }
-        }
+        .onReceive(live.$liveTrade.compactMap { $0 }) { chart.tick($0) }
     }
 
     // MARK: 상단 정보
@@ -63,62 +58,12 @@ struct ChartView: View {
                 Text(name.isEmpty ? "종목을 선택하세요" : name).font(.title3).fontWeight(.bold)
                 Text(code).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                priceLabel
+                PriceLabel(live: live, code: code, currentPrice: currentPrice)
             }
-            candleValues
+            CandleReadoutView(readout: chart.readout, period: chart.period)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-    }
-
-    @ViewBuilder
-    private var priceLabel: some View {
-        if let price = liveTrade?.price ?? currentPrice?.price {
-            let change = liveTrade?.change ?? currentPrice?.change ?? 0
-            let sign = liveTrade?.sign ?? currentPrice?.sign ?? "3"
-            let rate = liveTrade?.rate ?? currentPrice?.rate ?? 0
-            let c = formatChange(change: change, sign: sign, rate: nil)
-            HStack(spacing: 6) {
-                Text(fmt(price)).font(.title2).fontWeight(.bold)
-                Text("\(c.text) (\(String(format: "%.2f", rate))%)").font(.callout)
-            }
-            .foregroundStyle(color(for: c.direction))
-            .monospacedDigit()
-        }
-    }
-
-    @ViewBuilder
-    private var candleValues: some View {
-        if let c = chart.hovered ?? chart.latest {
-            HStack(spacing: 14) {
-                Text(candleTime(c)).font(.caption).foregroundStyle(.secondary)
-                value("시", fmt(c.open), .primary)
-                value("고", fmt(c.high), .up)
-                value("저", fmt(c.low), .down)
-                value("종", fmt(c.close), .primary)
-                value("량", fmt(c.volume), .primary)
-            }
-            .font(.callout).monospacedDigit()
-        } else {
-            Text(" ").font(.callout)
-        }
-    }
-
-    private func value(_ label: String, _ text: String, _ tint: Color) -> some View {
-        HStack(spacing: 3) {
-            Text(label).foregroundStyle(tint == .primary ? Color.secondary : tint).font(.caption)
-            Text(text).foregroundStyle(tint)
-        }
-    }
-
-    private func candleTime(_ c: Candle) -> String {
-        let f = DateFormatter()
-        f.timeZone = TimeZone(identifier: "Asia/Seoul")
-        switch chart.period {
-        case .minute: f.dateFormat = "MM/dd HH:mm"
-        default: f.dateFormat = "yyyy/MM/dd"
-        }
-        return f.string(from: Date(timeIntervalSince1970: Double(c.timestamp) / 1000))
     }
 
     // MARK: 도구 모음
@@ -160,5 +105,76 @@ struct ChartView: View {
         } label: {
             if chart.indicators.contains(name) { Label(label, systemImage: "checkmark") } else { Text(label) }
         }
+    }
+}
+
+/// 실시간 체결가. 체결마다 갱신되므로 차트 화면과 분리해 이 뷰만 다시 그린다.
+private struct PriceLabel: View {
+    @ObservedObject var live: LiveMarket
+    let code: String
+    let currentPrice: KisPrice?
+
+    var body: some View {
+        let trade = live.liveTrade?.code == code ? live.liveTrade : nil
+        if let price = trade?.price ?? currentPrice?.price {
+            let change = trade?.change ?? currentPrice?.change ?? 0
+            let sign = trade?.sign ?? currentPrice?.sign ?? "3"
+            let rate = trade?.rate ?? currentPrice?.rate ?? 0
+            let c = formatChange(change: change, sign: sign, rate: nil)
+            HStack(spacing: 6) {
+                Text(fmt(price)).font(.title2).fontWeight(.bold)
+                Text("\(c.text) (\(String(format: "%.2f", rate))%)").font(.callout)
+            }
+            .foregroundStyle(color(for: c.direction))
+            .monospacedDigit()
+        }
+    }
+}
+
+/// 마우스가 가리키는 봉(없으면 최근 봉)의 시·고·저·종·거래량. 마우스 이동마다 바뀌므로 분리해 둔다.
+private struct CandleReadoutView: View {
+    @ObservedObject var readout: ChartReadout
+    let period: ChartPeriod
+
+    private static let minuteFormat = timeFormatter("MM/dd HH:mm")
+    private static let dayFormat = timeFormatter("yyyy/MM/dd")
+
+    private static func timeFormatter(_ format: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.timeZone = TimeZone(identifier: "Asia/Seoul")
+        f.dateFormat = format
+        return f
+    }
+
+    var body: some View {
+        if let c = readout.hovered ?? readout.latest {
+            HStack(spacing: 14) {
+                Text(time(c)).font(.caption).foregroundStyle(.secondary)
+                value("시", fmt(c.open), .primary)
+                value("고", fmt(c.high), .up)
+                value("저", fmt(c.low), .down)
+                value("종", fmt(c.close), .primary)
+                value("량", fmt(c.volume), .primary)
+            }
+            .font(.callout).monospacedDigit()
+        } else {
+            Text(" ").font(.callout)
+        }
+    }
+
+    private func value(_ label: String, _ text: String, _ tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(label).foregroundStyle(tint == .primary ? Color.secondary : tint).font(.caption)
+            Text(text).foregroundStyle(tint)
+        }
+    }
+
+    private func time(_ c: Candle) -> String {
+        let formatter: DateFormatter
+        switch period {
+        case .minute: formatter = Self.minuteFormat
+        default: formatter = Self.dayFormat
+        }
+        return formatter.string(from: Date(timeIntervalSince1970: Double(c.timestamp) / 1000))
     }
 }

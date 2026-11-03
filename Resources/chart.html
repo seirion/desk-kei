@@ -56,23 +56,48 @@
     unsubscribeBar: function () { barCallback = null; }
   });
 
+  function barKey(bar) {
+    return bar ? bar.timestamp + ':' + bar.open + ':' + bar.high + ':' + bar.low + ':' + bar.close + ':' + bar.volume : 'none';
+  }
+
+  // 같은 봉이면 다시 보내지 않는다.
+  var lastLatestKey = null, lastHoverKey = null;
   function notifyLatest() {
     var list = chart.getDataList();
-    post({ type: 'latest', bar: list.length ? list[list.length - 1] : null });
+    var bar = list.length ? list[list.length - 1] : null;
+    var key = barKey(bar);
+    if (key === lastLatestKey) return;
+    lastLatestKey = key;
+    post({ type: 'latest', bar: bar });
   }
 
   // 십자선 이벤트에는 좌표만 오는 경우가 있어, 가로 좌표로 봉을 직접 찾는다.
-  chart.subscribeAction('onCrosshairChange', function (crosshair) {
-    var bar = null;
-    if (crosshair && crosshair.kLineData) {
-      bar = crosshair.kLineData;
-    } else if (crosshair && typeof crosshair.x === 'number') {
+  function barAt(crosshair) {
+    if (crosshair && crosshair.kLineData) return crosshair.kLineData;
+    if (crosshair && typeof crosshair.x === 'number') {
       var points = chart.convertFromPixel([{ x: crosshair.x }], { paneId: crosshair.paneId || 'candle_pane' });
       var point = Array.isArray(points) ? points[0] : points;
       var list = chart.getDataList();
-      if (point && typeof point.dataIndex === 'number' && list[point.dataIndex]) bar = list[point.dataIndex];
+      if (point && typeof point.dataIndex === 'number' && list[point.dataIndex]) return list[point.dataIndex];
     }
+    return null;
+  }
+
+  // 마우스 이동·드래그마다 이벤트가 쏟아지므로 프레임당 한 번만, 봉이 바뀔 때만 Swift 로 보낸다.
+  var pendingCrosshair = null, hoverScheduled = false;
+  function flushHover() {
+    hoverScheduled = false;
+    var bar = barAt(pendingCrosshair);
+    var key = barKey(bar);
+    if (key === lastHoverKey) return;
+    lastHoverKey = key;
     post({ type: 'hover', bar: bar });
+  }
+  chart.subscribeAction('onCrosshairChange', function (crosshair) {
+    pendingCrosshair = crosshair;
+    if (hoverScheduled) return;
+    hoverScheduled = true;
+    requestAnimationFrame(flushHover);
   });
 
   var indicators = {};
@@ -103,11 +128,13 @@
     setSymbol: function (ticker) {
       chart.removeOverlay();
       lastCumVolume = null;
+      lastLatestKey = lastHoverKey = null;
       chart.setSymbol({ ticker: ticker, pricePrecision: 0, volumePrecision: 0 });
     },
 
     setPeriod: function (type, span) {
       lastCumVolume = null;
+      lastLatestKey = lastHoverKey = null;
       chart.setPeriod({ type: type, span: span });
     },
 
