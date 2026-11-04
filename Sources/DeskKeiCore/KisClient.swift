@@ -328,6 +328,16 @@ public final class KisClient {
 
     /// 미체결 주문 정정
     public func modifyOrder(orderNo: String, exchange: String, qty: Int, price: Int) async throws -> OrderResult {
+        try await reviseOrder(orderNo: orderNo, exchange: exchange, qty: qty, price: price, cancel: false)
+    }
+
+    /// 미체결 주문 취소 (잔량 전부)
+    public func cancelOrder(orderNo: String, exchange: String, limitPrice price: Int) async throws -> OrderResult {
+        try await reviseOrder(orderNo: orderNo, exchange: exchange, qty: 0, price: price, cancel: true)
+    }
+
+    /// 정정·취소 공통. 취소는 수량 0, 잔량 전부(QTY_ALL_ORD_YN=Y)로 보낸다.
+    private func reviseOrder(orderNo: String, exchange: String, qty: Int, price: Int, cancel: Bool) async throws -> OrderResult {
         guard account.hasTradingAccount else { throw KisError.notConfigured }
         let (cano, prdt) = account.accountParts
         let json = try await call(
@@ -340,12 +350,12 @@ public final class KisClient {
                 "ORGN_ODNO": orderNo,
                 "EXCG_ID_DVSN_CD": exchange.isEmpty ? "KRX" : exchange,
                 "ORD_DVSN": price > 0 ? MarketClock.limitOrderDivision() : "01",
-                "RVSE_CNCL_DVSN_CD": "01",
+                "RVSE_CNCL_DVSN_CD": cancel ? "02" : "01",
                 "ORD_QTY": String(qty),
-                "ORD_UNPR": String(price),
+                "ORD_UNPR": cancel ? "0" : String(price),
                 "QTY_ALL_ORD_YN": "Y",
             ])
-        try check(json, fallback: "정정 오류")
+        try check(json, fallback: cancel ? "취소 오류" : "정정 오류")
         let o = json["output"] as? [String: Any] ?? [:]
         return OrderResult(orderNo: str(o["ODNO"]), time: str(o["ORD_TMD"]))
     }
@@ -384,7 +394,8 @@ public final class KisClient {
                     orderTime: str(o["ord_tmd"]),
                     status: str(o["ord_stts"]),
                     orderType: str(o["ord_dvsn_name"]),
-                    exchange: str(o["excg_id_dvsn_cd"])
+                    exchange: str(o["excg_id_dvsn_cd"]),
+                    canceled: str(o["cncl_yn"]) == "Y"
                 ))
             }
 

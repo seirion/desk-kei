@@ -182,6 +182,8 @@ public struct DailyOrderItem: Equatable, Identifiable {
     public var orderType: String
     /// 주문이 접수된 거래소 (KRX / NXT)
     public var exchange: String
+    /// 취소된 주문 (cncl_yn)
+    public var canceled = false
 
     public var id: String { "\(orderNo)-\(orderTime)-\(code)-\(orderQty)" }
 }

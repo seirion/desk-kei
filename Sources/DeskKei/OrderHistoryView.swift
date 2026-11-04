@@ -1,7 +1,7 @@
 import DeskKeiCore
 import SwiftUI
 
-/// 당일 주문/체결 내역. 미체결 주문은 정정 화면으로 보낼 수 있다.
+/// 당일 주문/체결 내역. 미체결 주문은 정정 화면으로 보내거나 바로 취소할 수 있다.
 struct OrderHistoryView: View {
     @EnvironmentObject var model: AppModel
     let onModify: (DailyOrderItem) -> Void
@@ -10,6 +10,9 @@ struct OrderHistoryView: View {
     @State private var items: [DailyOrderItem] = []
     @State private var loading = false
     @State private var error: String?
+    @State private var cancelTarget: DailyOrderItem?
+    @State private var cancelingId: String?
+    @State private var actionMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +31,10 @@ struct OrderHistoryView: View {
             .padding(10)
             Divider()
 
+            if let actionMessage {
+                ErrorBanner(text: actionMessage) { self.actionMessage = nil }.padding(8)
+            }
+
             if let error {
                 Text(error).foregroundStyle(Color.up).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !loading && items.isEmpty {
@@ -44,6 +51,14 @@ struct OrderHistoryView: View {
             }
         }
         .task(id: filter) { await load() }
+        .alert("주문 취소", isPresented: Binding(get: { cancelTarget != nil }, set: { if !$0 { cancelTarget = nil } })) {
+            Button("주문 취소", role: .destructive) { if let t = cancelTarget { Task { await cancel(t) } } }
+            Button("닫기", role: .cancel) {}
+        } message: {
+            if let t = cancelTarget {
+                Text("[\(t.nameKr)] \(t.side == .buy ? "매수" : "매도") \(t.orderPrice > 0 ? "\(fmt(t.orderPrice))원" : "시장가") 잔여 \(fmt(t.remainQty))주를 취소하시겠습니까?")
+            }
+        }
     }
 
     private func row(_ item: DailyOrderItem) -> some View {
@@ -73,9 +88,17 @@ struct OrderHistoryView: View {
                     Spacer()
                     Text("체결금액 **\(fmt(item.execAmount))**원").font(.callout)
                 } else {
-                    Text(item.status.isEmpty ? "미체결" : item.status).font(.caption).foregroundStyle(.orange)
+                    Text(item.canceled ? "취소" : item.status.isEmpty ? "미체결" : item.status)
+                        .font(.caption).foregroundStyle(item.canceled ? Color.secondary : Color.orange)
                     Spacer()
-                    if item.remainQty > 0 { Button("정정") { onModify(item) } }
+                    if item.remainQty > 0, !item.canceled {
+                        if cancelingId == item.id {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Button("정정") { onModify(item) }
+                            Button("취소") { cancelTarget = item }
+                        }
+                    }
                 }
             }
         }
@@ -93,6 +116,19 @@ struct OrderHistoryView: View {
         }
         if item.remainQty > 0 { s += AttributedString(" · 잔여 \(fmt(item.remainQty))주") }
         return s
+    }
+
+    private func cancel(_ item: DailyOrderItem) async {
+        guard let client = model.client else { return }
+        actionMessage = nil
+        cancelingId = item.id
+        defer { cancelingId = nil }
+        do {
+            _ = try await client.cancelOrder(orderNo: item.orderNo, exchange: item.exchange, limitPrice: item.orderPrice)
+        } catch {
+            actionMessage = error.localizedDescription
+        }
+        await load()
     }
 
     private func load() async {
