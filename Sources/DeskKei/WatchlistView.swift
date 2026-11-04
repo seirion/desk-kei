@@ -70,8 +70,8 @@ struct WatchlistView: View {
             Text("등락").frame(width: 170, alignment: .trailing)
             Button("편집") { editing = true }
                 .buttonStyle(.plain)
-                .foregroundStyle(model.currentCodes.count > 1 ? Color.accentColor : Color.secondary)
-                .disabled(model.currentCodes.count < 2)
+                .foregroundStyle(model.currentCodes.isEmpty ? Color.secondary : Color.accentColor)
+                .disabled(model.currentCodes.isEmpty)
                 .frame(width: 56)
         }
         .font(.caption)
@@ -165,15 +165,18 @@ private struct EditWatchlistSheet: View {
                 Button("완료") { dismiss() }.keyboardShortcut(.defaultAction)
             }
             .padding(16)
-            Text("종목을 끌어서 순서를 바꿉니다.")
+            Text("종목을 끌어서 순서를 바꾸고, 오른쪽 x 로 제거합니다.")
                 .font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16).padding(.bottom, 8)
             Divider()
-            ReorderableTable(rows: codes.map { ReorderRow(id: $0, title: model.stocks[$0]?.nameKr ?? $0, subtitle: $0) }) { order in
+            ReorderableTable(rows: codes.map { ReorderRow(id: $0, title: model.stocks[$0]?.nameKr ?? $0, subtitle: $0) }, onMove: { order in
                 codes = order
                 model.setWatchCodes(order)
-            }
+            }, onRemove: { code in
+                codes.removeAll { $0 == code }
+                model.toggleWatch(code)
+            })
         }
         .frame(width: 420, height: 480)
         .onAppear { codes = model.currentCodes }

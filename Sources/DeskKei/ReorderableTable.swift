@@ -12,8 +12,10 @@ struct ReorderableTable: NSViewRepresentable {
     let rows: [ReorderRow]
     /// 순서가 바뀔 때마다 새 순서의 id 목록으로 호출된다.
     let onMove: ([String]) -> Void
+    /// 행 오른쪽 끝의 x 로 지운 항목의 id 로 호출된다.
+    let onRemove: (String) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(rows: rows, onMove: onMove) }
+    func makeCoordinator() -> Coordinator { Coordinator(rows: rows, onMove: onMove, onRemove: onRemove) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let table = NSTableView()
@@ -39,6 +41,7 @@ struct ReorderableTable: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let c = context.coordinator
         c.onMove = onMove
+        c.onRemove = onRemove
         guard c.rows != rows else { return }
         c.rows = rows
         c.table?.reloadData()
@@ -50,11 +53,20 @@ struct ReorderableTable: NSViewRepresentable {
 
         var rows: [ReorderRow]
         var onMove: ([String]) -> Void
+        var onRemove: (String) -> Void
         weak var table: NSTableView?
 
-        init(rows: [ReorderRow], onMove: @escaping ([String]) -> Void) {
+        init(rows: [ReorderRow], onMove: @escaping ([String]) -> Void, onRemove: @escaping (String) -> Void) {
             self.rows = rows
             self.onMove = onMove
+            self.onRemove = onRemove
+        }
+
+        @objc func removeClicked(_ sender: NSButton) {
+            guard let table, case let row = table.row(for: sender), rows.indices.contains(row) else { return }
+            let id = rows.remove(at: row).id
+            table.removeRows(at: IndexSet(integer: row), withAnimation: .slideUp)
+            onRemove(id)
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
@@ -68,13 +80,25 @@ struct ReorderableTable: NSViewRepresentable {
             subtitle.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             subtitle.textColor = .secondaryLabelColor
 
-            let stack = NSStackView(views: [grip, title, subtitle])
-            stack.spacing = 8
+            let remove = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "삭제") ?? NSImage(),
+                                  target: self, action: #selector(removeClicked(_:)))
+            remove.isBordered = false
+            remove.contentTintColor = .secondaryLabelColor
+            remove.toolTip = "관심종목에서 제거"
+
+            // 제목·코드는 왼쪽, x 는 오른쪽 끝에 둔다.
+            let left = NSStackView(views: [grip, title, subtitle])
+            left.spacing = 8
+            let stack = NSStackView(views: [left, remove])
+            stack.distribution = .fill
+            left.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            remove.setContentHuggingPriority(.required, for: .horizontal)
             let cell = NSTableCellView()
             cell.addSubview(stack)
             stack.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
                 stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                stack.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
                 stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
             return cell
