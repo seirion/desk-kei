@@ -95,6 +95,8 @@ public struct AppStateFile: Codable {
     public var activeGroup: Int = 0
     /// system / light / dark
     public var appearance: String = "system"
+    /// 신규 주문 전에 확인 팝업을 띄울지
+    public var confirmOrders: Bool = true
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -102,6 +104,7 @@ public struct AppStateFile: Codable {
         lastTab = try c.decodeIfPresent(String.self, forKey: .lastTab) ?? lastTab
         activeGroup = try c.decodeIfPresent(Int.self, forKey: .activeGroup) ?? activeGroup
         appearance = try c.decodeIfPresent(String.self, forKey: .appearance) ?? appearance
+        confirmOrders = try c.decodeIfPresent(Bool.self, forKey: .confirmOrders) ?? confirmOrders
     }
 }
 

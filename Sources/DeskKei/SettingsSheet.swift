@@ -27,6 +27,14 @@ struct SettingsSheet: View {
                 .frame(width: 220)
             }
 
+            row("주문 확인") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("주문 전 확인 팝업 표시", isOn: $model.confirmOrders)
+                    Text("끄면 주문 버튼을 누르는 즉시 주문이 전송됩니다. 정정은 항상 확인합니다.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             row("종목 마스터") {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {

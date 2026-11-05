@@ -399,11 +399,18 @@ struct OrderView: View {
         guard !code.isEmpty else { errorMessage = "종목을 선택해주세요."; return }
         guard let qty = qtyNum, qty > 0 else { errorMessage = "수량을 입력해주세요."; return }
         let sideText = side == .buy ? "매수" : "매도"
+        let message: String
         if orderType == .market {
-            confirmMessage = "[\(name)] \(sideText) 시장가 \(fmt(qty))주 주문하시겠습니까?"
+            message = "[\(name)] \(sideText) 시장가 \(fmt(qty))주 주문하시겠습니까?"
         } else {
             guard let price = priceNum, price > 0 else { errorMessage = "단가를 입력해주세요."; return }
-            confirmMessage = "[\(name)] \(sideText) \(fmt(price))원 × \(fmt(qty))주 = \(fmt(price * qty))원\n주문하시겠습니까?"
+            message = "[\(name)] \(sideText) \(fmt(price))원 × \(fmt(qty))주 = \(fmt(price * qty))원\n주문하시겠습니까?"
+        }
+        // 정정은 설정과 무관하게 항상 확인한다.
+        if model.confirmOrders || modifyTarget != nil {
+            confirmMessage = message
+        } else {
+            Task { await submit() }
         }
     }
 
