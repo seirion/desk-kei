@@ -16,6 +16,13 @@ func color(for direction: PriceDirection) -> Color {
     }
 }
 
+/// `prefix`와 `suffix` 사이의 `value` 만 굵게 보여 주는 텍스트
+func emphasized(_ prefix: String, _ value: String, _ suffix: String = "") -> Text {
+    var bold = AttributedString(value)
+    bold.inlinePresentationIntent = .stronglyEmphasized
+    return Text(AttributedString(prefix) + bold + AttributedString(suffix))
+}
+
 func pnlColor(_ value: Int) -> Color {
     value > 0 ? .up : value < 0 ? .down : .secondary
 }
