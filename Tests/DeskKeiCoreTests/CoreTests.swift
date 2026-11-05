@@ -105,6 +105,7 @@ import CommonCrypto
         #expect(state.lastTab == "order")
         #expect(state.activeGroup == 3)
         #expect(state.appearance == "system")
+        #expect(state.confirmOrders)
     }
 }
 

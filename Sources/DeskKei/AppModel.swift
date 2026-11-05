@@ -67,6 +67,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var masterError: String?
     @Published private(set) var watchlist: WatchlistFile
     @Published var activeGroup: Int { didSet { groupChanged(from: oldValue) } }
+    @Published var confirmOrders: Bool { didSet { saveState() } }
     @Published var appearance: AppearanceMode {
         didSet {
             NSApplication.shared.appearance = appearance.nsAppearance
@@ -117,6 +118,7 @@ final class AppModel: ObservableObject {
         tab = AppTab(rawValue: state.lastTab) ?? .watchlist
         activeGroup = min(max(state.activeGroup, 0), WatchlistFile.groupCount - 1)
         appearance = AppearanceMode(rawValue: state.appearance) ?? .system
+        confirmOrders = state.confirmOrders
 
         orderCode = (prefsStore.load(OrderPrefsFile.self) ?? OrderPrefsFile()).last.code
     }
@@ -467,6 +469,7 @@ final class AppModel: ObservableObject {
         s.lastTab = tab.rawValue
         s.activeGroup = activeGroup
         s.appearance = appearance.rawValue
+        s.confirmOrders = confirmOrders
         stateStore.save(s)
     }
 }
