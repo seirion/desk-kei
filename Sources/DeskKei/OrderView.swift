@@ -135,7 +135,7 @@ struct OrderView: View {
             inputs
             quickRow
             if orderType == .limit, totalAmount > 0 {
-                Text("총 주문금액: **\(fmt(totalAmount))**원").frame(maxWidth: .infinity, alignment: .trailing)
+                emphasized("총 주문금액: ", fmt(totalAmount), "원").frame(maxWidth: .infinity, alignment: .trailing)
             }
             if let resultMessage { banner(resultMessage, color: .green) { self.resultMessage = nil } }
             if let errorMessage { banner(errorMessage, color: .up) { self.errorMessage = nil } }
@@ -281,13 +281,13 @@ struct OrderView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 if orderType == .limit, let p = currentPrice {
-                    Text("현재가 **\(fmt(p.price))**원")
+                    emphasized("현재가 ", fmt(p.price), "원")
                 }
                 if side == .buy, let buyable {
-                    Text("매수가능 **\(fmt(buyable.maxBuyQty))**주")
+                    emphasized("매수가능 ", fmt(buyable.maxBuyQty), "주")
                 }
                 if side == .sell, let h = holdings.first(where: { $0.code == code }) {
-                    Text("보유 **\(fmt(h.holdingQty))**주")
+                    emphasized("보유 ", fmt(h.holdingQty), "주")
                 }
             }
             .font(.callout)
