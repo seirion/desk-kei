@@ -156,15 +156,13 @@ struct OrderView: View {
     // MARK: 종목 검색 / 선택 정보
 
     private var stockSearch: some View {
-        HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             StockSearchField(selectedCode: code, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
                 Task { await select(code: code, name: name) }
             }
-            .frame(minWidth: 160)
             RecentStockChips(selectedCode: code, recent: prefs.recent) { code, name in
                 Task { await select(code: code, name: name) }
             }
-            .layoutPriority(1)
         }
     }
 

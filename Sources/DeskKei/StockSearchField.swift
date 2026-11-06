@@ -122,15 +122,17 @@ struct StockSearchField: View {
     }
 }
 
-/// 지금 보는 종목을 뺀 최근 종목 3개 바로가기. 누르면 그 종목으로 이동한다.
+/// 지금 보는 종목을 뺀 최근 종목 5개 바로가기. 누르면 그 종목으로 이동한다.
 struct RecentStockChips: View {
+    static let count = 5
+
     let selectedCode: String
     let recent: [RecentStock]
     let onSelect: (_ code: String, _ name: String) -> Void
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(recent.filter { $0.code != selectedCode }.prefix(3), id: \.code) { stock in
+            ForEach(recent.filter { $0.code != selectedCode }.prefix(Self.count), id: \.code) { stock in
                 Button { onSelect(stock.code, stock.name) } label: {
                     Text(stock.name)
                         .font(.callout)
@@ -145,6 +147,7 @@ struct RecentStockChips: View {
                 .help("\(stock.name) \(stock.code)")
             }
         }
-        .fixedSize()
+        // 자리가 모자라면 버튼 이름이 말줄임으로 줄어든다.
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
