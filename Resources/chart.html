@@ -131,7 +131,7 @@
     var text = groupDigits(price);
     if (current > 0) {
       var rate = (price - current) / current * 100;
-      text += ' (' + (rate > 0 ? '+' : rate < 0 ? '-' : '') + Math.abs(rate).toFixed(2) + '%)';
+      text += ' (' + Math.abs(rate).toFixed(2) + '%)';
     }
     el.textContent = '\u2500 ' + text;
     el.style.display = 'block';
