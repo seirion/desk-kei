@@ -84,6 +84,26 @@ public struct OrderPrefsFile: Codable {
     }
 }
 
+/// 선물/옵션 화면 상태 (마지막 종목, 최근 종목). 코드는 선물옵션 단축코드.
+public struct FuturesPrefsFile: Codable {
+    public static let recentMax = 20
+    public var last: RecentStock?
+    public var recent: [RecentStock] = []
+    public init() {}
+
+    public mutating func touch(code: String, name: String) {
+        let item = RecentStock(code: code, name: name)
+        last = item
+        recent.removeAll { $0.code == code }
+        recent.insert(item, at: 0)
+        if recent.count > Self.recentMax { recent = Array(recent.prefix(Self.recentMax)) }
+    }
+
+    public mutating func removeRecent(code: String) {
+        recent.removeAll { $0.code == code }
+    }
+}
+
 /// 차트 설정. indicators 가 nil 이면 저장된 적이 없는 것으로 보고 기본 지표(MA, VOL)를 쓴다.
 public struct ChartPrefsFile: Codable, Equatable {
     public var indicators: [String]?

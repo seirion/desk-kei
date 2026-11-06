@@ -49,6 +49,13 @@ struct SettingsSheet: View {
                             .disabled(model.masterRefreshing)
                         if model.masterRefreshing { ProgressView().controlSize(.small) }
                     }
+                    HStack(spacing: 10) {
+                        Text("선물/옵션 \(fmt(model.futures.instruments.count))종목")
+                        if let at = model.futuresUpdatedAt {
+                            Text("· \(at.formatted(.dateTime.year().month().day().hour().minute())) 갱신")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     if let error = model.masterError {
                         Text(error).font(.caption).foregroundStyle(Color.up)
                     }

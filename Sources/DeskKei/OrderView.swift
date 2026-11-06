@@ -441,10 +441,25 @@ struct OrderView: View {
 
 // MARK: - 호가창
 
+/// 실시간 호가(LiveMarket)를 구독해 그리는 호가창
 private struct OrderBookPanel: View {
     @ObservedObject var live: LiveMarket
     let currentPrice: KisPrice?
     let hasCode: Bool
+    let onPick: (Int) -> Void
+
+    var body: some View {
+        OrderBookTable(book: live.orderBook, currentPrice: currentPrice, hasCode: hasCode, onPick: onPick)
+    }
+}
+
+/// 호가창. 위 = 높은 가격(매도), 아래 = 매수. 가격을 누르면 `onPick` 으로 알린다.
+struct OrderBookTable: View {
+    let book: OrderBook?
+    let currentPrice: KisPrice?
+    let hasCode: Bool
+    /// true 면 가격이 0 인 빈 호가 단계를 비워 둔다 (거래가 드문 옵션 등)
+    var hideEmptyLevels = false
     let onPick: (Int) -> Void
 
     var body: some View {
@@ -453,7 +468,7 @@ private struct OrderBookPanel: View {
             Divider()
             if !hasCode {
                 placeholder("종목을 선택하세요")
-            } else if let book = live.orderBook {
+            } else if let book {
                 table(book)
             } else {
                 placeholder("호가 수신 대기 중…")
@@ -515,16 +530,17 @@ private struct OrderBookPanel: View {
     }
 
     private func row(_ level: OrderBookLevel, maxQty: Int, tint: Color, qtyFirst: Bool) -> some View {
+        let hidden = hideEmptyLevels && level.price == 0
         let qty = ZStack(alignment: qtyFirst ? .trailing : .leading) {
             GeometryReader { geo in
                 tint.opacity(0.18)
                     .frame(width: geo.size.width * min(1, CGFloat(level.qty) / CGFloat(maxQty)))
                     .frame(maxWidth: .infinity, alignment: qtyFirst ? .trailing : .leading)
             }
-            Text(fmt(level.qty)).font(.caption).padding(.horizontal, 4)
+            Text(hidden ? "" : fmt(level.qty)).font(.caption).padding(.horizontal, 4)
         }
         let price = HStack(spacing: 4) {
-            Text(fmt(level.price)).foregroundStyle(tint)
+            Text(hidden ? "" : fmt(level.price)).foregroundStyle(tint)
             if let rate = changeRate(level.price) {
                 Text(fmtRate(abs(rate.value), signed: false)).font(.system(size: 10)).foregroundStyle(rate.tint)
             }

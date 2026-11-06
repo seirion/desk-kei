@@ -4,13 +4,14 @@ import DeskKeiCore
 import SwiftUI
 
 enum AppTab: String, CaseIterable, Identifiable {
-    case assets, watchlist, order
+    case assets, watchlist, order, futures
     var id: String { rawValue }
     var title: String {
         switch self {
         case .assets: return "총자산"
         case .watchlist: return "관심종목"
         case .order: return "주식주문"
+        case .futures: return "선물/옵션"
         }
     }
     var symbol: String {
@@ -18,6 +19,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .assets: return "wonsign.circle"
         case .watchlist: return "star"
         case .order: return "list.clipboard"
+        case .futures: return "chart.line.uptrend.xyaxis"
         }
     }
 }
@@ -65,6 +67,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var masterUpdatedAt: Date?
     @Published private(set) var masterRefreshing = false
     @Published private(set) var masterError: String?
+    /// 주식선물옵션 종목 (기초자산·월물·행사가 선택과 검색용)
+    @Published private(set) var futures = FuturesCatalog(instruments: [])
+    @Published private(set) var futuresUpdatedAt: Date?
     @Published private(set) var watchlist: WatchlistFile
     @Published var activeGroup: Int { didSet { groupChanged(from: oldValue) } }
     @Published var confirmOrders: Bool { didSet { saveState() } }
@@ -128,6 +133,7 @@ final class AppModel: ObservableObject {
     func start() {
         NSApplication.shared.appearance = appearance.nsAppearance
         Task { await loadStocks() }
+        Task { await loadFutures() }
         if account.hasCredentials { Task { await startSession() } } else { showAccounts = accounts.isEmpty }
 
         clockTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -145,18 +151,32 @@ final class AppModel: ObservableObject {
         masterUpdatedAt = StockMaster.cachedAt()
     }
 
-    /// 캐시와 상관없이 종목 마스터를 지금 새로 받는다.
+    private func loadFutures() async {
+        do { futures = FuturesCatalog(instruments: try await FuturesMaster.load()) }
+        catch { errorMessage = "선물옵션 종목 정보를 불러오지 못했습니다: \(error.localizedDescription)" }
+        futuresUpdatedAt = FuturesMaster.cachedAt()
+    }
+
+    /// 캐시와 상관없이 종목 마스터(주식·선물옵션)를 지금 새로 받는다.
     func refreshMaster() async {
         guard !masterRefreshing else { return }
         masterRefreshing = true
         masterError = nil
         defer { masterRefreshing = false }
+        var failures: [String] = []
         do {
             stocks = try await StockMaster.load(force: true)
             masterUpdatedAt = StockMaster.cachedAt()
         } catch {
-            masterError = "갱신하지 못했습니다: \(error.localizedDescription)"
+            failures.append("종목: \(error.localizedDescription)")
         }
+        do {
+            futures = FuturesCatalog(instruments: try await FuturesMaster.load(force: true))
+            futuresUpdatedAt = FuturesMaster.cachedAt()
+        } catch {
+            failures.append("선물옵션: \(error.localizedDescription)")
+        }
+        if !failures.isEmpty { masterError = "갱신하지 못했습니다: " + failures.joined(separator: " / ") }
     }
 
     /// 현재 계정으로 실시간 연결과 관심종목 시세 조회를 시작한다.
@@ -422,8 +442,8 @@ final class AppModel: ObservableObject {
                 socket.subscribeOrderBook([orderCode])
                 loadInitialOrderBook()
             }
-        case .assets:
-            break
+        case .assets, .futures:
+            break   // 선물/옵션 화면은 REST 로 주기적으로 조회한다.
         }
     }
 

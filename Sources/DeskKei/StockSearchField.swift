@@ -14,6 +14,8 @@ struct StockSearchField: View {
     let onRemoveRecent: (_ code: String) -> Void
     /// true 면 목록을 입력창 아래에 겹쳐 그린다(아래 내용을 밀지 않는다).
     var floating = false
+    /// 검색 결과를 직접 만들 때(기본은 주식 종목 마스터 검색)
+    var source: ((_ query: String) -> [(code: String, name: String)])?
     let onSelect: (_ code: String, _ name: String) -> Void
 
     private static let maxListHeight: CGFloat = 280
@@ -58,7 +60,7 @@ struct StockSearchField: View {
     }
 
     private var suggestions: [Suggestion] {
-        let results = StockSearch.search(model.stocks, query: query, limit: 8)
+        let results = source?(query) ?? StockSearch.search(model.stocks, query: query, limit: 8).map { (code: $0.code, name: $0.name) }
         if !results.isEmpty { return results.map { Suggestion(code: $0.code, name: $0.name, isRecent: false) } }
         guard focused, query.isEmpty else { return [] }
         return recent.map { Suggestion(code: $0.code, name: $0.name, isRecent: true) }
@@ -128,6 +130,8 @@ struct RecentStockChips: View {
 
     let selectedCode: String
     let recent: [RecentStock]
+    /// 버튼 하나의 최대 너비. 이름이 길면 이 폭에서 말줄임으로 줄어든다.
+    var maxChipWidth: CGFloat = 90
     let onSelect: (_ code: String, _ name: String) -> Void
 
     var body: some View {
@@ -137,7 +141,7 @@ struct RecentStockChips: View {
                     Text(stock.name)
                         .font(.callout)
                         .lineLimit(1)
-                        .frame(maxWidth: 90)
+                        .frame(maxWidth: maxChipWidth)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(Color.secondary.opacity(0.12), in: Capsule())

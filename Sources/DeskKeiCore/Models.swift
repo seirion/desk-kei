@@ -21,6 +21,13 @@ public struct KisAccount: Codable, Equatable, Identifiable, Hashable {
     public var hasCredentials: Bool { !appKey.isEmpty && !appSecret.isEmpty }
     public var hasTradingAccount: Bool { hasCredentials && !accountNo.isEmpty }
 
+    /// 선물옵션 주문·조회에 쓰는 (종합계좌 8자리, 상품코드). 선물옵션 계좌는 같은 종합계좌의 상품코드 03 이므로
+    /// 주식 계좌(01)이거나 비어 있으면 03 으로 바꾼다. 다른 상품코드(03 등)를 직접 등록했다면 그대로 쓴다.
+    public var futuresAccountParts: (cano: String, product: String) {
+        let p = accountParts
+        return (p.cano, p.product.isEmpty || p.product == "01" ? "03" : p.product)
+    }
+
     /// 계좌번호를 (종합계좌 8자리, 상품코드) 로 분리
     public var accountParts: (cano: String, product: String) {
         let clean = accountNo.filter { $0 != "-" && !$0.isWhitespace }
@@ -145,6 +152,36 @@ public struct OrderRequest {
 public struct OrderResult: Equatable {
     public var orderNo: String
     public var time: String
+}
+
+/// 선물옵션 시세 (현재가 + 선물옵션 고유 항목)
+public struct FuturesQuote: Equatable {
+    public var price: KisPrice
+    public var upperLimit: Int
+    public var lowerLimit: Int
+    /// 미결제약정 수량
+    public var openInterest: Int
+    /// 이론가
+    public var theoreticalPrice: Int
+    /// 최종거래일 yyyyMMdd
+    public var lastTradeDate: String
+    /// 잔존일수
+    public var remainingDays: Int
+}
+
+public struct FuturesOrderRequest {
+    public var code: String
+    public var side: OrderSide
+    public var type: OrderType
+    public var qty: Int
+    public var price: Int   // 시장가는 0
+    public init(code: String, side: OrderSide, type: OrderType, qty: Int, price: Int) {
+        self.code = code
+        self.side = side
+        self.type = type
+        self.qty = qty
+        self.price = price
+    }
 }
 
 public struct BuyableInfo: Equatable {

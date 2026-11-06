@@ -4,7 +4,7 @@ import Foundation
 public final class KisClient {
     public static let baseURL = URL(string: "https://openapi.koreainvestment.com:9443")!
 
-    private let account: KisAccount
+    let account: KisAccount
     private let session: URLSession
     private let tokenStore: JSONStore
 
@@ -413,7 +413,7 @@ public final class KisClient {
 
     // MARK: - 전송
 
-    private func call(path: String, method: String = "GET", trId: String,
+    func call(path: String, method: String = "GET", trId: String,
                       query: [String: String] = [:], body: [String: String]? = nil) async throws -> [String: Any] {
         let token = try await accessToken()
         return try await send(path: path, method: method, query: query, body: body, headers: [
@@ -448,9 +448,9 @@ public final class KisClient {
         return json
     }
 
-    private func isOK(_ json: [String: Any]) -> Bool { str(json["rt_cd"]) == "0" }
+    func isOK(_ json: [String: Any]) -> Bool { str(json["rt_cd"]) == "0" }
 
-    private func check(_ json: [String: Any], fallback: String) throws {
+    func check(_ json: [String: Any], fallback: String) throws {
         if !isOK(json) {
             let msg = str(json["msg1"])
             throw KisError(msg.isEmpty ? fallback : msg)

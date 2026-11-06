@@ -16,6 +16,7 @@ struct ContentView: View {
                     page(.assets) { AssetsView() }
                     page(.watchlist) { WatchlistView() }
                     page(.order) { OrderView() }
+                    page(.futures) { FuturesView() }
                 }
             }
             ToastStack()
@@ -28,7 +29,7 @@ struct ContentView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 300)
+                .frame(width: 400)
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Text(model.wsConnected ? "● 실시간" : "○ 대기")

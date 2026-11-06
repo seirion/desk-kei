@@ -312,3 +312,93 @@ import CommonCrypto
         #expect(CandleSeries.merge([a, b, a2]) == [b, a2])
     }
 }
+
+@Suite struct FuturesMasterTests {
+    /// 실제 fo_stk_code_mts 파일에서 가져온 줄 (스프레드 포함)
+    private static let sample = """
+    1|A11611|KR4A116B0004|삼성전자   F 202611 (  10)| |00000.00|1|005930|삼성전자
+    1|A11612|KR4A116C0003|삼성전자   F 202612 (  10)| |00000.00|2|005930|삼성전자
+    2|4GNW0401|KR44GNW4W5S8|삼성전자   SP 2611-2612 (  10)| |00000.00|1|005930|삼성전자
+    5|B11611089|KR4B116B0895|삼성전자   C 202611   190,000(  10)|2|00190000| |005930|삼성전자
+    6|C11611089|KR4C116B0894|삼성전자   P 202611   190,000(  10)|3|00190000| |005930|삼성전자
+    5|B11612089|KR4B116C0894|삼성전자   C 202612   195,000(  10)|2|00195000| |005930|삼성전자
+    7|AM0612|KR4AM06C0009|KODEX 삼성그룹 F 202612| |00000.00|1|102780|KODEX 삼성그룹
+    1|1GNW04|KR41GNW40002|금양       F 202504 (  10)| |00000.00|1|001570|금양
+    """
+
+    private func parsed() -> [FuturesInstrument] {
+        FuturesMaster.parse(mst: Data(Self.sample.utf8))
+    }
+
+    @Test func parsesKindsAndSkipsSpreads() {
+        let items = parsed()
+        #expect(items.count == 7)
+        #expect(!items.contains { $0.code == "4GNW0401" })
+        let call = items.first { $0.code == "B11611089" }!
+        #expect(call.kind == .call && call.strike == 190_000 && call.expiry == "202611")
+        #expect(call.underlyingCode == "005930" && call.underlyingName == "삼성전자" && call.multiplier == 10)
+        #expect(items.first { $0.code == "C11611089" }?.kind == .put)
+        let future = items.first { $0.code == "A11612" }!
+        #expect(future.kind == .future && future.strike == 0 && future.expiry == "202612")
+        #expect(future.title == "삼성전자 선물 26.12")
+        #expect(call.title == "삼성전자 콜 26.11 190,000")
+    }
+
+    @Test func multiplierUnknownForEtfFutures() {
+        #expect(parsed().first { $0.code == "AM0612" }?.multiplier == 0)
+    }
+
+    @Test func multiplierOfAdjustedContract() {
+        #expect(FuturesMaster.multiplier(in: "삼성바이오 F 202611 (  10)*") == 10)
+        #expect(FuturesMaster.multiplier(in: "삼성전자   C 202611   190,000(  10)") == 10)
+        #expect(FuturesMaster.expiry(in: "삼성바이오 F 202611 (  10)*") == "202611")
+    }
+
+    @Test func dropsExpiredMonths() {
+        var c = DateComponents(); c.year = 2026; c.month = 11; c.day = 7; c.hour = 12
+        let now = MarketClock.calendar.date(from: c)!
+        let active = FuturesMaster.active(parsed(), now: now)
+        #expect(!active.contains { $0.expiry == "202504" })
+        #expect(active.contains { $0.expiry == "202611" })
+    }
+
+    @Test func catalogSelection() {
+        let catalog = FuturesCatalog(instruments: parsed())
+        #expect(catalog.expiries(underlying: "005930", kind: .future) == ["202611", "202612"])
+        #expect(catalog.expiries(underlying: "005930", kind: .call) == ["202611", "202612"])
+        #expect(catalog.strikes(underlying: "005930", kind: .call, expiry: "202612") == [195_000])
+        #expect(catalog.instrument(underlying: "005930", kind: .put, expiry: "202611", strike: 190_000)?.code == "C11611089")
+        #expect(catalog.instrument(underlying: "005930", kind: .put, expiry: "202612", strike: 190_000) == nil)
+    }
+
+    @Test func catalogSearch() {
+        let catalog = FuturesCatalog(instruments: parsed())
+        // 이름이 검색어로 시작하는 종목이 먼저, 그다음 이름에 포함하는 종목
+        #expect(catalog.search("삼성", limit: 8).map(\.key) == ["u:005930", "u:102780"])
+        #expect(catalog.search("005930", limit: 8).first?.key == "u:005930")
+        #expect(catalog.search("", limit: 8).isEmpty)
+        // 단축코드 앞부분으로도 종목을 바로 찾는다.
+        #expect(catalog.search("A1161", limit: 8).contains { $0.key == "A11611" })
+        #expect(FuturesCatalog.underlyingCode(fromKey: "u:005930") == "005930")
+        #expect(FuturesCatalog.underlyingCode(fromKey: "A11611") == nil)
+    }
+
+    @Test func tickInferenceAndStep() {
+        let futures = OrderBook(code: "A11612",
+                                asks: [189_000, 189_100, 189_200].map { OrderBookLevel(price: $0, qty: 1) },
+                                bids: [188_700, 188_600, 0].map { OrderBookLevel(price: $0, qty: 1) })
+        #expect(inferTick(futures) == 100)
+        #expect(inferTick(nil) == 1)
+        #expect(stepPrice(189_000, up: true, tick: 100) == 189_100)
+        #expect(stepPrice(189_050, up: true, tick: 100) == 189_100)
+        #expect(stepPrice(189_050, up: false, tick: 100) == 189_000)
+        #expect(stepPrice(100, up: false, tick: 100) == 100)
+    }
+
+    @Test func futuresAccountUsesProduct03() {
+        #expect(KisAccount(accountNo: "12345678-01").futuresAccountParts == ("12345678", "03"))
+        #expect(KisAccount(accountNo: "1234567801").futuresAccountParts == ("12345678", "03"))
+        #expect(KisAccount(accountNo: "12345678-03").futuresAccountParts == ("12345678", "03"))
+        #expect(KisAccount(accountNo: "12345678").futuresAccountParts == ("12345678", "03"))
+    }
+}
