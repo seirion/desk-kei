@@ -431,8 +431,10 @@ final class AppModel: ObservableObject {
     private func applySubscription() {
         guard let socket else { return }
         socket.unsubscribeAll()
-        live.orderBook = nil
-        live.liveTrade = nil
+        // 같은 종목의 주문 화면을 계속 보고 있다면(재연결·시간대 전환 등) 직전 값을 남겨
+        // 다음 실시간 값으로 바로 바뀌게 한다. 화면을 떠났다 돌아온 경우는 처음부터 받는다.
+        if tab != .order || live.orderBook?.code != orderCode { live.orderBook = nil }
+        if tab != .order || live.liveTrade?.code != orderCode { live.liveTrade = nil }
         switch tab {
         case .watchlist:
             socket.subscribeTrades(currentCodes)
