@@ -29,11 +29,15 @@ struct ChartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            StockSearchField(selectedCode: code, recent: recent, onRemoveRecent: onRemoveRecent, floating: true, onSelect: onSelect)
-                .frame(width: 300)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
+            HStack(alignment: .top, spacing: 8) {
+                StockSearchField(selectedCode: code, recent: recent, onRemoveRecent: onRemoveRecent, floating: true, onSelect: onSelect)
+                    .frame(width: 300)
+                RecentStockChips(selectedCode: code, recent: recent, onSelect: onSelect)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .zIndex(1)
             header
             Divider()
             toolbar

@@ -121,3 +121,30 @@ struct StockSearchField: View {
         focused = false
     }
 }
+
+/// 지금 보는 종목을 뺀 최근 종목 3개 바로가기. 누르면 그 종목으로 이동한다.
+struct RecentStockChips: View {
+    let selectedCode: String
+    let recent: [RecentStock]
+    let onSelect: (_ code: String, _ name: String) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(recent.filter { $0.code != selectedCode }.prefix(3), id: \.code) { stock in
+                Button { onSelect(stock.code, stock.name) } label: {
+                    Text(stock.name)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .frame(maxWidth: 90)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("\(stock.name) \(stock.code)")
+            }
+        }
+        .fixedSize()
+    }
+}
