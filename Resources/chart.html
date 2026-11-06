@@ -6,10 +6,17 @@
 <style>
   html, body, #chart { margin: 0; width: 100%; height: 100%; overflow: hidden; }
   body { background: Canvas; }
+  :root { --mark: #76808F; }
+  @media (prefers-color-scheme: dark) { :root { --mark: #929AA5; } }
+  #chart { position: relative; }
+  #marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+  .mark { position: absolute; white-space: nowrap; font: 10px/1 -apple-system, "Helvetica Neue", sans-serif;
+          color: var(--mark); font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <div id="chart"></div>
+<div id="marks"></div>
 <script>/*KLINECHARTS*/</script>
 <script>
 (function () {
@@ -31,7 +38,9 @@
           upBorderColor: UP, downBorderColor: DOWN, noChangeBorderColor: FLAT,
           upWickColor: UP, downWickColor: DOWN, noChangeWickColor: FLAT
         },
-        tooltip: { showRule: 'none' }
+        tooltip: { showRule: 'none' },
+        // 고가·저가 표시는 현재가 대비 비율을 붙여 직접 그린다(drawMarks).
+        priceMark: { high: { show: false }, low: { show: false } }
       },
       indicator: {
         bars: [{ style: 'fill', borderStyle: 'solid', borderSize: 1, borderDashedValue: [2, 2],
@@ -68,6 +77,7 @@
     var key = barKey(bar);
     if (key === lastLatestKey) return;
     lastLatestKey = key;
+    scheduleMarks();
     post({ type: 'latest', bar: bar });
   }
 
@@ -100,6 +110,70 @@
     requestAnimationFrame(flushHover);
   });
 
+
+  // 화면에 보이는 구간의 최고가·최저가를 현재가(마지막 봉 종가) 대비 비율과 함께 표시한다.
+  var marksEl = document.getElementById('marks');
+  var visibleRange = null, marksScheduled = false, highMark = null, lowMark = null;
+
+  function makeMark() {
+    var el = document.createElement('div');
+    el.className = 'mark';
+    el.style.display = 'none';
+    marksEl.appendChild(el);
+    return el;
+  }
+  function groupDigits(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  function placeMark(el, index, price, current) {
+    var point = chart.convertToPixel({ dataIndex: index, value: price }, { paneId: 'candle_pane' });
+    point = Array.isArray(point) ? point[0] : point;
+    if (!point || typeof point.x !== 'number' || typeof point.y !== 'number') { el.style.display = 'none'; return; }
+    var text = groupDigits(price);
+    if (current > 0) {
+      var rate = (price - current) / current * 100;
+      text += ' (' + (rate > 0 ? '+' : rate < 0 ? '-' : '') + Math.abs(rate).toFixed(2) + '%)';
+    }
+    el.textContent = '\u2500 ' + text;
+    el.style.display = 'block';
+    // 막대가 오른쪽 절반에 있으면 글자를 왼쪽에 둔다.
+    var toLeft = point.x > marksEl.clientWidth / 2;
+    var y = Math.max(0, Math.min(point.y, marksEl.clientHeight - 10));
+    el.style.top = (y - 5) + 'px';
+    if (toLeft) {
+      el.textContent = text + ' \u2500';
+      el.style.left = 'auto';
+      el.style.right = (marksEl.clientWidth - point.x + 4) + 'px';
+    } else {
+      el.style.right = 'auto';
+      el.style.left = (point.x + 4) + 'px';
+    }
+  }
+
+  function drawMarks() {
+    marksScheduled = false;
+    var list = chart.getDataList();
+    if (!list.length || !visibleRange) { if (highMark) { highMark.style.display = lowMark.style.display = 'none'; } return; }
+    if (!highMark) { highMark = makeMark(); lowMark = makeMark(); }
+    var from = Math.max(0, Math.floor(visibleRange.realFrom)), to = Math.min(list.length, Math.ceil(visibleRange.realTo));
+    var hi = -1, lo = -1;
+    for (var i = from; i < to; i++) {
+      if (hi < 0 || list[i].high > list[hi].high) hi = i;
+      if (lo < 0 || list[i].low < list[lo].low) lo = i;
+    }
+    if (hi < 0) { highMark.style.display = lowMark.style.display = 'none'; return; }
+    var current = list[list.length - 1].close;
+    placeMark(highMark, hi, list[hi].high, current);
+    placeMark(lowMark, lo, list[lo].low, current);
+  }
+  // 차트가 새 범위로 다시 그린 뒤 좌표를 읽도록 두 프레임 늦춘다.
+  function scheduleMarks() {
+    if (marksScheduled) return;
+    marksScheduled = true;
+    requestAnimationFrame(function () { requestAnimationFrame(drawMarks); });
+  }
+  chart.subscribeAction('onVisibleRangeChange', function (range) { visibleRange = range; scheduleMarks(); });
+  window.addEventListener('resize', scheduleMarks);
+
   var indicators = {};
 
   // 볼린저밴드의 중심선은 20 이동평균과 값이 같아 겹친다. 볼린저가 켜져 있으면
@@ -128,7 +202,11 @@
     chart.removeIndicator({ name: name });
     delete indicators[name];
   }
-  function reportIndicators() { post({ type: 'indicators', active: Object.keys(indicators) }); }
+  function reportIndicators() {
+    scheduleMarks();
+    setTimeout(scheduleMarks, 150);
+    post({ type: 'indicators', active: Object.keys(indicators) });
+  }
 
   window.kei = {
     deliver: function (id, bars, more) {
