@@ -86,7 +86,7 @@ struct OrderHistoryView: View {
                 if executed && item.execAmount > 0 {
                     Text(item.status).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Text("체결금액 **\(fmt(item.execAmount))**원").font(.callout)
+                    emphasized("체결금액 ", fmt(item.execAmount), "원").font(.callout)
                 } else {
                     Text(item.canceled ? "취소" : item.status.isEmpty ? "미체결" : item.status)
                         .font(.caption).foregroundStyle(item.canceled ? Color.secondary : Color.orange)
