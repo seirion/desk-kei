@@ -156,9 +156,34 @@ struct OrderView: View {
     // MARK: 종목 검색 / 선택 정보
 
     private var stockSearch: some View {
-        StockSearchField(selectedCode: code, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
-            Task { await select(code: code, name: name) }
+        HStack(alignment: .top, spacing: 8) {
+            StockSearchField(selectedCode: code, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
+                Task { await select(code: code, name: name) }
+            }
+            .frame(minWidth: 160)
+            recentChips.layoutPriority(1)
         }
+    }
+
+    /// 지금 보는 종목을 뺀 최근 종목 3개. 누르면 바로 그 종목으로 이동한다.
+    private var recentChips: some View {
+        HStack(spacing: 6) {
+            ForEach(prefs.recent.filter { $0.code != code }.prefix(3), id: \.code) { stock in
+                Button { Task { await select(code: stock.code, name: stock.name) } } label: {
+                    Text(stock.name)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .frame(maxWidth: 90)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("\(stock.name) \(stock.code)")
+            }
+        }
+        .fixedSize()
     }
 
     @ViewBuilder
