@@ -98,7 +98,9 @@ public struct FuturesCatalog {
         instruments(underlying: underlying).first { $0.kind == kind && $0.expiry == expiry && $0.strike == strike }
     }
 
-    /// 기초자산 이름/코드 부분 일치 (이름이 검색어로 시작하는 것을 먼저). 단축코드가 검색어로 시작하는 종목은 뒤에 붙인다.
+    /// 기초자산 이름/코드 부분 일치 (이름이 검색어로 시작하는 것을 먼저). 일치한 기초자산마다 만기 월별 선물을
+    /// 각각 결과로 돌려주고(`삼성전자 선물 26.11`, `26.12` …), 선물이 없는 기초자산은 기초자산 자체를 돌려준다.
+    /// 단축코드가 검색어로 시작하는 종목은 뒤에 붙인다.
     public func search(_ query: String, limit: Int) -> [(key: String, name: String)] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
@@ -109,11 +111,19 @@ public struct FuturesCatalog {
             if name.hasPrefix(q) || u.code.hasPrefix(q) { prefix.append(u) }
             else if name.contains(q) || u.code.contains(q) { rest.append(u) }
         }
-        var results = (prefix + rest).prefix(limit).map { (key: Self.underlyingKey($0.code), name: $0.name) }
-        if q.count >= 3, results.count < limit {
+        var results: [(key: String, name: String)] = []
+        var seen = Set<String>()
+        func add(_ key: String, _ name: String) {
+            if results.count < limit, seen.insert(key).inserted { results.append((key: key, name: name)) }
+        }
+        for u in prefix + rest {
+            let futures = instruments(underlying: u.code).filter { $0.kind == .future }.sorted { $0.expiry < $1.expiry }
+            if futures.isEmpty { add(Self.underlyingKey(u.code), u.name) }
+            for f in futures { add(f.code, f.title) }
+        }
+        if q.count >= 3 {
             let upper = query.trimmingCharacters(in: .whitespaces).uppercased()
-            let codes = instruments.filter { $0.code.hasPrefix(upper) }.prefix(limit - results.count)
-            results += codes.map { (key: $0.code, name: $0.title) }
+            for i in instruments where i.code.hasPrefix(upper) { add(i.code, i.title) }
         }
         return results
     }

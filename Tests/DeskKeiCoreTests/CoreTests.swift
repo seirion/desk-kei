@@ -373,12 +373,18 @@ import CommonCrypto
 
     @Test func catalogSearch() {
         let catalog = FuturesCatalog(instruments: parsed())
-        // 이름이 검색어로 시작하는 종목이 먼저, 그다음 이름에 포함하는 종목
-        #expect(catalog.search("삼성", limit: 8).map(\.key) == ["u:005930", "u:102780"])
-        #expect(catalog.search("005930", limit: 8).first?.key == "u:005930")
+        // 이름이 검색어로 시작하는 기초자산이 먼저, 그다음 이름에 포함하는 기초자산. 각각 만기 월별 선물로 펼친다.
+        let results = catalog.search("삼성", limit: 8)
+        #expect(results.map(\.key) == ["A11611", "A11612", "AM0612"])
+        #expect(results.map(\.name) == ["삼성전자 선물 26.11", "삼성전자 선물 26.12", "KODEX 삼성그룹 선물 26.12"])
+        #expect(catalog.search("005930", limit: 8).map(\.key) == ["A11611", "A11612"])
+        #expect(catalog.search("삼성", limit: 2).count == 2)
         #expect(catalog.search("", limit: 8).isEmpty)
         // 단축코드 앞부분으로도 종목을 바로 찾는다.
-        #expect(catalog.search("A1161", limit: 8).contains { $0.key == "A11611" })
+        #expect(catalog.search("A1161", limit: 8).map(\.key) == ["A11611"])
+        // 선물이 없는 기초자산은 기초자산 키로 돌려준다.
+        let optionsOnly = FuturesCatalog(instruments: parsed().filter { $0.kind != .future })
+        #expect(optionsOnly.search("삼성전자", limit: 8).map(\.key) == ["u:005930"])
         #expect(FuturesCatalog.underlyingCode(fromKey: "u:005930") == "005930")
         #expect(FuturesCatalog.underlyingCode(fromKey: "A11611") == nil)
     }

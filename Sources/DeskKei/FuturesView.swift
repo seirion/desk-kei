@@ -117,7 +117,7 @@ struct FuturesView: View {
         VStack(alignment: .leading, spacing: 8) {
             StockSearchField(
                 selectedCode: instrument?.code ?? "", recent: recentItems, onRemoveRecent: removeRecent,
-                source: { q in model.futures.search(q, limit: 8).map { (code: $0.key, name: $0.name) } }
+                source: { q in model.futures.search(q, limit: 40).map { (code: $0.key, name: $0.name) } }
             ) { code, _ in pick(code: code) }
             RecentStockChips(selectedCode: instrument?.code ?? "", recent: recentItems, maxChipWidth: 160) { code, _ in pick(code: code) }
         }
