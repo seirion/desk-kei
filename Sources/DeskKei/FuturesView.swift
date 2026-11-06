@@ -4,7 +4,7 @@ import SwiftUI
 private enum FuturesField { case price, qty }
 
 /// 주식선물옵션 화면: 기초자산 검색 → 선물/콜/풋·만기·행사가 선택 → 시세·호가 확인 → 주문.
-/// 시세와 호가는 이 탭을 보는 동안 1초마다 REST 로 조회한다.
+/// 시세는 이 탭을 보는 동안 1초마다 REST 로 조회하고, 호가는 실시간(최대 10호가)으로 받는다.
 struct FuturesView: View {
     @EnvironmentObject var model: AppModel
 
@@ -14,6 +14,8 @@ struct FuturesView: View {
     @State private var instrument: FuturesInstrument?
     @State private var quote: FuturesQuote?
     @State private var book: OrderBook?
+    /// 이 종목의 실시간 호가를 한 번이라도 받았는지. 받기 전에는 REST 호가로 채운다.
+    @State private var liveBookReceived = false
     @State private var loadError: String?
     @State private var needsPriceInit = false
 
@@ -44,8 +46,15 @@ struct FuturesView: View {
         }
         .onAppear(perform: restoreIfNeeded)
         .onChange(of: model.futures.instruments.count) { _ in restoreIfNeeded() }
+        .onReceive(model.live.$futuresBook.compactMap { $0 }) { live in
+            guard live.code == instrument?.code else { return }
+            book = live.trimmingEmptyDeepLevels()
+            liveBookReceived = true
+        }
         .task(id: PollKey(active: model.tab == .futures, code: instrument?.code ?? "")) {
             guard model.tab == .futures, instrument != nil else { return }
+            // 탭에 다시 들어오면 호가를 새로 구독하므로, 실시간 호가가 올 때까지 REST 로 채운다.
+            liveBookReceived = false
             while !Task.isCancelled {
                 await refresh()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -367,6 +376,7 @@ struct FuturesView: View {
         instrument = ins
         quote = nil
         book = nil
+        liveBookReceived = false
         loadError = nil
         inputPrice = ""
         resultMessage = nil
@@ -376,6 +386,7 @@ struct FuturesView: View {
         needsPriceInit = orderType == .limit
         prefs.touch(code: ins.code, name: ins.title)
         prefsStore.save(prefs)
+        model.futuresInstrumentChanged(ins)
     }
 
     private func removeRecent(code: String) {
@@ -387,11 +398,14 @@ struct FuturesView: View {
 
     private func refresh() async {
         guard let ins = instrument, let client = model.client else { return }
+        // 호가는 실시간으로 받는다. 받기 전(또는 소켓이 끊긴 동안)에만 REST 로 채운다.
+        let needRestBook = !liveBookReceived
         async let q = fetchQuote(client, ins)
-        async let b = try? client.futuresOrderBook(code: ins.code, kind: ins.kind)
+        async let b = needRestBook ? (try? await client.futuresOrderBook(code: ins.code, kind: ins.kind)) : nil
         let (newQuote, newBook) = await (q, b)
         guard instrument?.code == ins.code, !Task.isCancelled else { return }
-        if let newBook { book = newBook }
+        // 조회하는 사이 실시간 호가가 왔다면 그것이 더 최신이다.
+        if let newBook, !liveBookReceived { book = newBook.trimmingEmptyDeepLevels() }
         switch newQuote {
         case .success(let value):
             quote = value

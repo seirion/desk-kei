@@ -408,3 +408,79 @@ import CommonCrypto
         #expect(KisAccount(accountNo: "12345678").futuresAccountParts == ("12345678", "03"))
     }
 }
+
+@Suite struct FuturesRealtimeBookTests {
+    /// 주식선물 호가 68필드: 매도 189000.. 매수 188900.. 로 100원씩, 잔량은 1.. / 101..
+    private func futuresFields() -> [String] {
+        var f = Array(repeating: "0", count: 68)
+        f[0] = "A11611"; f[1] = "154500"
+        for i in 0..<10 {
+            f[2 + i] = "\(189_000 + i * 100).00"
+            f[12 + i] = "\(188_900 - i * 100).00"
+            f[42 + i] = String(1 + i)
+            f[52 + i] = String(101 + i)
+        }
+        return f
+    }
+
+    /// 주식옵션 호가 68필드: 1~5호가가 앞에, 6~10호가가 뒤에 붙는다.
+    private func optionFields(deep: Bool) -> [String] {
+        var f = Array(repeating: "0", count: 68)
+        f[0] = "B11611089"; f[1] = "154500"
+        for i in 0..<5 {
+            f[2 + i] = String(1_000 + i * 10); f[7 + i] = String(990 - i * 10)
+            f[22 + i] = String(1 + i); f[27 + i] = String(101 + i)
+            if deep {
+                f[38 + i] = String(1_050 + i * 10); f[43 + i] = String(940 - i * 10)
+                f[58 + i] = String(6 + i); f[63 + i] = String(106 + i)
+            }
+        }
+        return f
+    }
+
+    @Test func futuresTenLevels() {
+        let book = RealtimeDecoder.futuresOrderBook(futuresFields(), option: false)!
+        #expect(book.code == "A11611")
+        #expect(book.asks.count == 10 && book.bids.count == 10)
+        #expect(book.asks[0] == OrderBookLevel(price: 189_000, qty: 1))
+        #expect(book.asks[9] == OrderBookLevel(price: 189_900, qty: 10))
+        #expect(book.bids[0] == OrderBookLevel(price: 188_900, qty: 101))
+        #expect(book.bids[9] == OrderBookLevel(price: 188_000, qty: 110))
+    }
+
+    @Test func optionDeepLevelsAreAppended() {
+        let book = RealtimeDecoder.futuresOrderBook(optionFields(deep: true), option: true)!
+        #expect(book.asks.count == 10 && book.bids.count == 10)
+        #expect(book.asks[0] == OrderBookLevel(price: 1_000, qty: 1))
+        #expect(book.asks[4] == OrderBookLevel(price: 1_040, qty: 5))
+        #expect(book.asks[5] == OrderBookLevel(price: 1_050, qty: 6))
+        #expect(book.asks[9] == OrderBookLevel(price: 1_090, qty: 10))
+        #expect(book.bids[0] == OrderBookLevel(price: 990, qty: 101))
+        #expect(book.bids[5] == OrderBookLevel(price: 940, qty: 106))
+        #expect(book.bids[9] == OrderBookLevel(price: 900, qty: 110))
+    }
+
+    @Test func decodesFullMessages() {
+        var decoder = RealtimeDecoder()
+        let message = "0|H0ZFASP0|001|" + futuresFields().joined(separator: "^")
+        guard case .event(.orderBook(let book)) = decoder.decode(message) else { Issue.record("not an order book"); return }
+        #expect(book.code == "A11611" && book.asks.count == 10)
+        let option = "0|H0ZOASP0|001|" + optionFields(deep: true).joined(separator: "^")
+        guard case .event(.orderBook(let ob)) = decoder.decode(option) else { Issue.record("not an order book"); return }
+        #expect(ob.code == "B11611089" && ob.bids[9].price == 900)
+        #expect(decoder.decode("0|H0ZFASP0|001|A11611^154500") == .ignored)
+    }
+
+    @Test func trimsEmptyDeepLevelsOnly() {
+        // 6~10호가가 비어 있으면 5호가로 줄고, 앞 5단계는 비어 있어도 남는다.
+        let shallow = RealtimeDecoder.futuresOrderBook(optionFields(deep: false), option: true)!
+        #expect(shallow.asks.count == 10)
+        let trimmed = shallow.trimmingEmptyDeepLevels()
+        #expect(trimmed.asks.count == 5 && trimmed.bids.count == 5)
+        let sparse = OrderBook(code: "X", asks: [OrderBookLevel(price: 100, qty: 1)] + Array(repeating: OrderBookLevel(price: 0, qty: 0), count: 9),
+                               bids: [])
+        #expect(sparse.trimmingEmptyDeepLevels().asks.count == 5)
+        let deep = RealtimeDecoder.futuresOrderBook(optionFields(deep: true), option: true)!
+        #expect(deep.trimmingEmptyDeepLevels().asks.count == 10)
+    }
+}

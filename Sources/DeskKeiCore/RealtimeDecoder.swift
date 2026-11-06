@@ -57,6 +57,10 @@ public struct RealtimeDecoder {
             return Self.trade(fields, isNxt: trId == "H0NXCNT0").map { .event(.trade($0)) } ?? .ignored
         case "H0STASP0", "H0NXASP0":
             return Self.orderBook(fields).map { .event(.orderBook($0)) } ?? .ignored
+        case "H0ZFASP0":
+            return Self.futuresOrderBook(fields, option: false).map { .event(.orderBook($0)) } ?? .ignored
+        case "H0ZOASP0":
+            return Self.futuresOrderBook(fields, option: true).map { .event(.orderBook($0)) } ?? .ignored
         case "H0STCNI0":
             return Self.execution(fields).map { .event(.execution($0)) } ?? .ignored
         default:
@@ -99,6 +103,32 @@ public struct RealtimeDecoder {
         for i in 0..<10 {
             asks.append(OrderBookLevel(price: Int(Double(f[3 + i]) ?? 0), qty: Int(Double(f[23 + i]) ?? 0)))
             bids.append(OrderBookLevel(price: Int(Double(f[13 + i]) ?? 0), qty: Int(Double(f[33 + i]) ?? 0)))
+        }
+        return OrderBook(code: f[0], asks: asks, bids: bids)
+    }
+
+    // 주식선물(H0ZFASP0) 68필드: [0]종목 [1]시각 [2..11]매도호가1~10 [12..21]매수호가1~10 [22..41]건수 [42..51]매도잔량 [52..61]매수잔량 [62..]총계
+    // 주식옵션(H0ZOASP0) 68필드: [0]종목 [1]시각 [2..6]매도호가1~5 [7..11]매수호가1~5 [12..21]건수 [22..26]매도잔량 [27..31]매수잔량 [32..37]총계,
+    //   이어서 6~10호가가 뒤에 붙는다: [38..42]매도호가6~10 [43..47]매수호가6~10 [48..57]건수 [58..62]매도잔량6~10 [63..67]매수잔량6~10
+    static func futuresOrderBook(_ f: [String], option: Bool) -> OrderBook? {
+        guard f.count >= 62 else { return nil }
+        func at(_ i: Int) -> Int { i < f.count ? Int(Double(f[i]) ?? 0) : 0 }
+        var asks: [OrderBookLevel] = []
+        var bids: [OrderBookLevel] = []
+        if option {
+            for i in 0..<5 {
+                asks.append(OrderBookLevel(price: at(2 + i), qty: at(22 + i)))
+                bids.append(OrderBookLevel(price: at(7 + i), qty: at(27 + i)))
+            }
+            for i in 0..<5 {
+                asks.append(OrderBookLevel(price: at(38 + i), qty: at(58 + i)))
+                bids.append(OrderBookLevel(price: at(43 + i), qty: at(63 + i)))
+            }
+        } else {
+            for i in 0..<10 {
+                asks.append(OrderBookLevel(price: at(2 + i), qty: at(42 + i)))
+                bids.append(OrderBookLevel(price: at(12 + i), qty: at(52 + i)))
+            }
         }
         return OrderBook(code: f[0], asks: asks, bids: bids)
     }

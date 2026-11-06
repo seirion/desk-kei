@@ -47,6 +47,8 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 final class LiveMarket: ObservableObject {
     @Published var orderBook: OrderBook?
     @Published var liveTrade: RealTimeTrade?
+    /// 선물/옵션 화면의 실시간 호가 (최대 10호가)
+    @Published var futuresBook: OrderBook?
 }
 
 @MainActor
@@ -95,6 +97,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var orderRequestName = ""
     /// 체결 통보 등으로 잔고를 다시 읽어야 할 때 증가
     @Published private(set) var assetsVersion = 0
+    /// 선물/옵션 화면에서 보고 있는 종목 (실시간 호가 구독 대상)
+    private var futuresCode = ""
+    private var futuresKind: FuturesKind = .future
 
     private let accountsStore = JSONStore("accounts.json")
     private let watchStore = JSONStore("watchlist.json")
@@ -386,6 +391,15 @@ final class AppModel: ObservableObject {
         if live.orderBook == nil, book.code == orderCode { live.orderBook = book }
     }
 
+    /// 선물/옵션 화면에서 종목이 바뀌었을 때
+    func futuresInstrumentChanged(_ ins: FuturesInstrument) {
+        guard ins.code != futuresCode else { return }
+        futuresCode = ins.code
+        futuresKind = ins.kind
+        live.futuresBook = nil
+        if tab == .futures { applySubscription() }
+    }
+
     // MARK: - 실시간
 
     private func startRealtime() async {
@@ -433,6 +447,7 @@ final class AppModel: ObservableObject {
         socket.unsubscribeAll()
         live.orderBook = nil
         live.liveTrade = nil
+        live.futuresBook = nil
         switch tab {
         case .watchlist:
             socket.subscribeTrades(currentCodes)
@@ -442,8 +457,11 @@ final class AppModel: ObservableObject {
                 socket.subscribeOrderBook([orderCode])
                 loadInitialOrderBook()
             }
-        case .assets, .futures:
-            break   // 선물/옵션 화면은 REST 로 주기적으로 조회한다.
+        case .futures:
+            // 시세는 REST 로 주기적으로 조회하고, 호가만 실시간(최대 10호가)으로 받는다.
+            if !futuresCode.isEmpty { socket.subscribeFuturesBook(code: futuresCode, kind: futuresKind) }
+        case .assets:
+            break
         }
     }
 
@@ -469,7 +487,8 @@ final class AppModel: ObservableObject {
                 appendLive(code: t.code, price: t.price)
             }
         case .orderBook(let book):
-            if book.code == orderCode { live.orderBook = book }
+            if book.code == futuresCode, tab == .futures { live.futuresBook = book }
+            else if book.code == orderCode { live.orderBook = book }
         case .execution(let exec):
             toasts.append(exec)
             assetsVersion += 1

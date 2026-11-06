@@ -91,6 +91,15 @@ public struct OrderBook: Equatable {
         self.asks = asks
         self.bids = bids
     }
+
+    /// 앞쪽 `keep` 단계는 비어 있어도 남기고, 그 뒤쪽 단계는 가격이 있는 것만 남긴다.
+    /// 거래소가 깊은 호가를 채워 주지 않으면 5호가로, 채워 주면 최대 10호가로 보이게 한다.
+    public func trimmingEmptyDeepLevels(keep: Int = 5) -> OrderBook {
+        func trim(_ levels: [OrderBookLevel]) -> [OrderBookLevel] {
+            levels.enumerated().filter { $0.offset < keep || $0.element.price > 0 }.map(\.element)
+        }
+        return OrderBook(code: code, asks: trim(asks), bids: trim(bids))
+    }
 }
 
 public struct AssetItem: Equatable, Identifiable {
