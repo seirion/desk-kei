@@ -92,6 +92,8 @@ final class AppModel: ObservableObject {
     /// 호가·체결은 초당 여러 번 바뀌므로 AppModel 과 분리해, 필요한 뷰만 구독한다.
     let live = LiveMarket()
     @Published private(set) var orderCode: String
+    /// 현재 구독에서 실시간 호가를 한 번이라도 받았는지
+    private var orderBookIsLive = false
     /// 외부(주문 버튼)에서 주문 화면의 종목을 바꿀 때마다 증가
     @Published private(set) var orderRequestToken = 0
     @Published private(set) var orderRequestName = ""
@@ -382,13 +384,14 @@ final class AppModel: ObservableObject {
         guard code != orderCode else { return }
         orderCode = code
         live.orderBook = nil
+        orderBookIsLive = false
         live.liveTrade = nil
         if tab == .order { applySubscription() }
     }
 
-    /// REST 로 받아온 초기 호가. 실시간 호가가 아직 없을 때만 반영한다.
+    /// REST 로 받아온 초기 호가. 재구독 이후 실시간 호가가 아직 오지 않았을 때만 반영한다.
     func setInitialOrderBook(_ book: OrderBook) {
-        if live.orderBook == nil, book.code == orderCode { live.orderBook = book }
+        if !orderBookIsLive, book.code == orderCode { live.orderBook = book }
     }
 
     /// 선물/옵션 화면에서 종목이 바뀌었을 때
@@ -445,7 +448,9 @@ final class AppModel: ObservableObject {
     private func applySubscription() {
         guard let socket else { return }
         socket.unsubscribeAll()
-        live.orderBook = nil
+        // 같은 종목의 호가는 비우지 않는다: 비우면 호가창이 대기 문구로 깜빡인다. 새 값이 오면 덮어쓴다.
+        orderBookIsLive = false
+        if live.orderBook?.code != orderCode { live.orderBook = nil }
         live.liveTrade = nil
         live.futuresBook = nil
         switch tab {
@@ -488,7 +493,7 @@ final class AppModel: ObservableObject {
             }
         case .orderBook(let book):
             if book.code == futuresCode, tab == .futures { live.futuresBook = book }
-            else if book.code == orderCode { live.orderBook = book }
+            else if book.code == orderCode { live.orderBook = book; orderBookIsLive = true }
         case .execution(let exec):
             toasts.append(exec)
             assetsVersion += 1
