@@ -32,10 +32,43 @@ public final class KisClient {
         guard let token = json["access_token"] as? String else {
             throw KisError(json["error_description"] as? String ?? "토큰 발급 실패")
         }
-        let expiresIn = (json["expires_in"] as? Int) ?? 86_400
-        cache[tokenKey] = CachedToken(accessToken: token, expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn - 60)))
+        let expiresAt = Self.tokenExpiry(json: json, token: token)
+        cache[tokenKey] = CachedToken(accessToken: token, expiresAt: expiresAt.addingTimeInterval(-60))
         tokenStore.save(cache)
         return token
+    }
+
+    /// 캐시된 토큰을 버린다. 서버가 만료/무효 토큰이라고 답했을 때 쓴다.
+    func invalidateToken() {
+        var cache = tokenStore.load([String: CachedToken].self) ?? [:]
+        guard cache.removeValue(forKey: tokenKey) != nil else { return }
+        tokenStore.save(cache)
+    }
+
+    /// 토큰의 실제 만료 시각. 서버는 24시간 안에 다시 발급을 요청하면 기존 토큰을 돌려주면서도
+    /// `expires_in` 은 "지금부터 24시간"으로 주므로, 요청 시각 + expires_in 은 믿을 수 없다.
+    /// 응답의 `access_token_token_expired`(KST), 토큰 안의 `exp`, `expires_in` 순으로 쓴다.
+    static func tokenExpiry(json: [String: Any], token: String, now: Date = Date()) -> Date {
+        if let text = json["access_token_token_expired"] as? String {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "Asia/Seoul")
+            f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            if let d = f.date(from: text) { return d }
+        }
+        if let d = jwtExpiry(token) { return d }
+        return now.addingTimeInterval(TimeInterval((json["expires_in"] as? Int) ?? 86_400))
+    }
+
+    static func jwtExpiry(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        b64 += String(repeating: "=", count: (4 - b64.count % 4) % 4)
+        guard let data = Data(base64Encoded: b64),
+              let claims = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let exp = (claims["exp"] as? NSNumber)?.doubleValue else { return nil }
+        return Date(timeIntervalSince1970: exp)
     }
 
     /// WebSocket 접속용 approval key
@@ -415,14 +448,30 @@ public final class KisClient {
 
     func call(path: String, method: String = "GET", trId: String,
                       query: [String: String] = [:], body: [String: String]? = nil) async throws -> [String: Any] {
-        let token = try await accessToken()
-        return try await send(path: path, method: method, query: query, body: body, headers: [
-            "authorization": "Bearer \(token)",
-            "appkey": account.appKey,
-            "appsecret": account.appSecret,
-            "tr_id": trId,
-            "custtype": "P",
-        ])
+        func attempt() async throws -> [String: Any] {
+            let token = try await accessToken()
+            return try await send(path: path, method: method, query: query, body: body, headers: [
+                "authorization": "Bearer \(token)",
+                "appkey": account.appKey,
+                "appsecret": account.appSecret,
+                "tr_id": trId,
+                "custtype": "P",
+            ])
+        }
+        // 캐시한 토큰을 서버가 만료/무효로 보면 버리고 새로 받아 한 번만 다시 시도한다.
+        do {
+            let json = try await attempt()
+            guard !Self.isTokenErrorBody(json) else { throw KisError(str(json["msg1"]), code: str(json["msg_cd"])) }
+            return json
+        } catch let error as KisError where error.isTokenError {
+            invalidateToken()
+            return try await attempt()
+        }
+    }
+
+    private static func isTokenErrorBody(_ json: [String: Any]) -> Bool {
+        let code = str(json["msg_cd"])
+        return code == "EGW00123" || code == "EGW00121"
     }
 
     private func send(path: String, method: String, query: [String: String] = [:],
@@ -442,7 +491,7 @@ public final class KisClient {
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let msg = (json?["msg1"] as? String) ?? (json?["error_description"] as? String)
-            throw KisError(msg ?? "요청 실패: HTTP \(http.statusCode)")
+            throw KisError(msg ?? "요청 실패: HTTP \(http.statusCode)", code: (json?["msg_cd"] as? String) ?? "")
         }
         guard let json else { throw KisError("응답을 해석할 수 없습니다.") }
         return json

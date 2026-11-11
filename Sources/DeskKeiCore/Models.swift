@@ -272,7 +272,14 @@ public struct OrderExecution: Equatable, Identifiable {
 
 public struct KisError: LocalizedError {
     public let message: String
-    public init(_ message: String) { self.message = message }
+    /// 서버가 준 msg_cd (없으면 빈 문자열)
+    public let code: String
+    public init(_ message: String, code: String = "") {
+        self.message = message
+        self.code = code
+    }
     public var errorDescription: String? { message }
+    /// 토큰이 만료(EGW00123)되었거나 유효하지 않다(EGW00121)는 오류
+    public var isTokenError: Bool { code == "EGW00123" || code == "EGW00121" }
     public static let notConfigured = KisError("KIS API 설정이 없습니다. 계정을 먼저 등록해 주세요.")
 }

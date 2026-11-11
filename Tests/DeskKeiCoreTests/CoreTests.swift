@@ -484,3 +484,36 @@ import CommonCrypto
         #expect(deep.trimmingEmptyDeepLevels().asks.count == 10)
     }
 }
+
+@Suite struct TokenExpiryTests {
+    private func jwt(exp: Int) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: ["exp": exp])
+        let b64 = data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "h.\(b64).s"
+    }
+
+    @Test func prefersServerExpiryTimeInKST() {
+        let d = KisClient.tokenExpiry(json: ["access_token_token_expired": "2026-11-11 11:10:06", "expires_in": 86400], token: "x")
+        #expect(d == Date(timeIntervalSince1970: 1_794_363_006))
+    }
+
+    @Test func fallsBackToJwtExp() {
+        let d = KisClient.tokenExpiry(json: ["expires_in": 86400], token: jwt(exp: 1_800_000_000))
+        #expect(d == Date(timeIntervalSince1970: 1_800_000_000))
+    }
+
+    @Test func fallsBackToExpiresIn() {
+        let now = Date()
+        #expect(KisClient.tokenExpiry(json: ["expires_in": 3600], token: "garbage", now: now) == now.addingTimeInterval(3600))
+        #expect(KisClient.tokenExpiry(json: [:], token: "a.b", now: now) == now.addingTimeInterval(86_400))
+    }
+
+    @Test func recognizesTokenErrors() {
+        #expect(KisError("x", code: "EGW00123").isTokenError)
+        #expect(KisError("x", code: "EGW00121").isTokenError)
+        #expect(!KisError("x", code: "EGW00201").isTokenError)
+        #expect(!KisError("x").isTokenError)
+    }
+}
