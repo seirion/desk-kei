@@ -35,6 +35,7 @@ struct ContentView: View {
                 Text(model.wsConnected ? "● 실시간" : "○ 대기")
                     .font(.caption)
                     .foregroundStyle(model.wsConnected ? Color.green : Color.secondary)
+                    .padding(.horizontal, 6)
                 Button { model.showSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .help("종목 검색 (⌘F)")
                 Button { model.showAccounts = true } label: { Image(systemName: "person.crop.circle") }
