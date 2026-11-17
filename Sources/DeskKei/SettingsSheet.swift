@@ -1,7 +1,58 @@
 import DeskKeiCore
 import SwiftUI
 
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case accounts, general
+    var id: String { rawValue }
+    var title: String { self == .accounts ? "계정" : "일반" }
+}
+
+/// 계정 관리와 일반 설정을 탭으로 묶은 통합 설정 화면 (⌘,)
 struct SettingsSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var editingAccount = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("설정").font(.headline)
+                Spacer()
+                Picker("분류", selection: $model.settingsTab) {
+                    ForEach(SettingsTab.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 160)
+                .disabled(editingAccount)
+                Spacer()
+                if editingAccount {
+                    closeButton
+                } else {
+                    closeButton.keyboardShortcut(.cancelAction)
+                }
+            }
+            .padding(14)
+            Divider()
+
+            switch model.settingsTab {
+            case .accounts: AccountsPane(isEditing: $editingAccount)
+            case .general: GeneralPane()
+            }
+        }
+        .frame(width: 480, height: 460)
+    }
+
+    private var closeButton: some View {
+        Button { dismiss() } label: { Image(systemName: "xmark.circle.fill") }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .opacity(editingAccount ? 0.3 : 1)
+            .disabled(editingAccount)
+    }
+}
+
+private struct GeneralPane: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
@@ -14,8 +65,6 @@ struct SettingsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("설정").font(.headline)
-
             row("앱 버전") { Text(version) }
 
             row("화면 모드") {
@@ -62,13 +111,13 @@ struct SettingsSheet: View {
                 }
             }
 
+            Spacer(minLength: 0)
             HStack {
                 Spacer()
                 Button("닫기") { dismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 380)
     }
 
     private func row<V: View>(_ title: String, @ViewBuilder content: () -> V) -> some View {

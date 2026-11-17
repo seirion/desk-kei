@@ -55,9 +55,9 @@ final class LiveMarket: ObservableObject {
 final class AppModel: ObservableObject {
     // 화면 상태
     @Published var tab: AppTab { didSet { tabChanged() } }
-    @Published var showAccounts = false
     @Published var showSearch = false
     @Published var showSettings = false
+    @Published var settingsTab: SettingsTab = .accounts
     @Published var errorMessage: String?
 
     // 계정
@@ -135,13 +135,18 @@ final class AppModel: ObservableObject {
         orderCode = (prefsStore.load(OrderPrefsFile.self) ?? OrderPrefsFile()).last.code
     }
 
+    func openSettings(_ tab: SettingsTab? = nil) {
+        if let tab { settingsTab = tab }
+        showSettings = true
+    }
+
     // MARK: - 시작
 
     func start() {
         NSApplication.shared.appearance = appearance.nsAppearance
         Task { await loadStocks() }
         Task { await loadFutures() }
-        if account.hasCredentials { Task { await startSession() } } else { showAccounts = accounts.isEmpty }
+        if account.hasCredentials { Task { await startSession() } } else if accounts.isEmpty { openSettings(.accounts) }
 
         clockTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkMarketSession() }

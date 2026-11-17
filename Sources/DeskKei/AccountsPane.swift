@@ -1,46 +1,26 @@
 import DeskKeiCore
 import SwiftUI
 
-/// KIS 계정 목록 / 추가 / 편집 / 삭제 / 전환
-struct AccountsSheet: View {
+/// KIS 계정 목록 / 추가 / 편집 / 삭제 / 전환 (설정 화면의 계정 탭)
+struct AccountsPane: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     /// nil = 목록, "" = 신규, 그 외 = 편집 중인 계정 이름
     @State private var editing: String?
+    @Binding var isEditing: Bool
     @State private var form = KisAccount()
     @State private var formError: String?
     @State private var deleting: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(title).font(.headline)
-                Spacer()
-                Button { editing == nil ? dismiss() : (editing = nil) } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .keyboardShortcut(.cancelAction)
+        Group { if editing == nil { list } else { editor } }
+            .onChange(of: editing) { isEditing = $0 != nil }
+            .alert("계정 삭제", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+                Button("삭제", role: .destructive) { if let d = deleting { model.deleteAccount(d) } }
+                Button("취소", role: .cancel) {}
+            } message: {
+                Text("\"\(deleting ?? "")\" 계정을 삭제할까요?")
             }
-            .padding(14)
-            Divider()
-
-            if editing == nil { list } else { editor }
-        }
-        .frame(width: 440, height: 420)
-        .alert("계정 삭제", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
-            Button("삭제", role: .destructive) { if let d = deleting { model.deleteAccount(d) } }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("\"\(deleting ?? "")\" 계정을 삭제할까요?")
-        }
-    }
-
-    private var title: String {
-        switch editing {
-        case nil: return "KIS 계정 관리"
-        case "": return "계정 추가"
-        default: return "계정 편집"
-        }
     }
 
     // MARK: 목록
@@ -108,7 +88,7 @@ struct AccountsSheet: View {
             Divider()
             HStack {
                 Spacer()
-                Button("취소") { editing = nil }
+                Button("취소") { editing = nil }.keyboardShortcut(.cancelAction)
                 Button("저장", action: save).keyboardShortcut(.defaultAction)
             }
             .padding(12)
