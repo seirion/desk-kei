@@ -38,12 +38,11 @@ struct ContentView: View {
                     .padding(.horizontal, 6)
                 Button { model.showSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .help("종목 검색 (⌘F)")
-                Button { model.showAccounts = true } label: { Image(systemName: "person.crop.circle") }
-                    .help("계정 관리 (⌘,)")
+                Button { model.openSettings(.accounts) } label: { Image(systemName: "person.crop.circle") }
+                    .help("설정 (⌘,)")
             }
         }
         .navigationTitle(model.account.name.isEmpty ? "Desk Kei" : "Desk Kei · \(model.account.name)")
-        .sheet(isPresented: $model.showAccounts) { AccountsSheet() }
         .sheet(isPresented: $model.showSearch) { SearchSheet() }
         .sheet(isPresented: $model.showSettings) { SettingsSheet() }
     }

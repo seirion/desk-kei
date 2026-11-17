@@ -26,7 +26,7 @@ struct DeskKeiApp: App {
             CommandGroup(after: .newItem) {
                 Button("종목 검색") { model.showSearch = true }
                     .keyboardShortcut("f", modifiers: .command)
-                Button("계정 관리") { model.showAccounts = true }
+                Button("설정…") { model.openSettings() }
                     .keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("화면") {
@@ -38,9 +38,6 @@ struct DeskKeiApp: App {
                 Button("새로고침") { model.refreshAssets() }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(model.tab != .assets)
-            }
-            CommandMenu("설정") {
-                Button("설정…") { model.showSettings = true }
             }
         }
     }
