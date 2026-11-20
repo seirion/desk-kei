@@ -433,6 +433,14 @@ final class AppModel: ObservableObject {
         futuresFavoritesStore.save(futuresFavorites)
     }
 
+    /// 검색에서 고른 종목을 즐겨찾기에 담는다. 새로 담았으면 true, 이미 있으면 false.
+    @discardableResult
+    func addFuturesFavorite(code: String, name: String) -> Bool {
+        let added = futuresFavorites.add(code: code, name: name)
+        if added { futuresFavoritesStore.save(futuresFavorites) }
+        return added
+    }
+
     func setFuturesFavoriteOrder(_ codes: [String]) {
         futuresFavorites.reorder(codes)
         futuresFavoritesStore.save(futuresFavorites)

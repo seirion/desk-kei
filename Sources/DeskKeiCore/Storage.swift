@@ -122,6 +122,14 @@ public struct FuturesFavoritesFile: Codable, Equatable {
         return true
     }
 
+    /// 없으면 맨 뒤에 담는다. 새로 담았으면 true, 이미 있으면 false.
+    @discardableResult
+    public mutating func add(code: String, name: String) -> Bool {
+        guard !contains(code) else { return false }
+        items.append(RecentStock(code: code, name: name))
+        return true
+    }
+
     /// 주어진 코드 순서로 바꾼다. 목록에 없는 코드는 무시하고, 빠진 항목은 지운 것으로 본다.
     public mutating func reorder(_ codes: [String]) {
         let byCode = Dictionary(items.map { ($0.code, $0) }, uniquingKeysWith: { a, _ in a })

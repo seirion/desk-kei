@@ -530,6 +530,13 @@ import CommonCrypto
         #expect(!f.contains("A11612"))
     }
 
+    @Test func addIsIdempotent() {
+        var f = FuturesFavoritesFile()
+        #expect(f.add(code: "A", name: "a"))
+        #expect(!f.add(code: "A", name: "other"))
+        #expect(f.items.map(\.name) == ["a"])
+    }
+
     @Test func reorderKeepsNamesAndDropsMissing() {
         var f = FuturesFavoritesFile()
         f.toggle(code: "A", name: "a")

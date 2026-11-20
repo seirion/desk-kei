@@ -39,6 +39,7 @@ struct FuturesFavoritesView: View {
     @EnvironmentObject var model: AppModel
     @State private var quotes: [String: FuturesQuote] = [:]
     @State private var editing = false
+    @State private var notice: String?
 
     private struct PollKey: Hashable {
         let active: Bool
@@ -49,13 +50,14 @@ struct FuturesFavoritesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            searchBar
             header
             Divider()
             if items.isEmpty {
                 VStack(spacing: 8) {
                     Text("즐겨찾기한 선물/옵션이 없습니다.").foregroundStyle(.secondary)
-                    Text("거래 탭에서 종목 이름 옆 별을 눌러 추가하세요.").font(.caption).foregroundStyle(.secondary)
-                    Button("거래 탭으로") { model.futuresSubTab = .trade }
+                    Text("위 검색창에서 종목을 검색해 추가하세요. 거래 탭의 별로도 담을 수 있습니다.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -76,7 +78,37 @@ struct FuturesFavoritesView: View {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
+        .task(id: notice) {
+            guard notice != nil else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if !Task.isCancelled { notice = nil }
+        }
         .sheet(isPresented: $editing) { EditFavoritesSheet() }
+    }
+
+    /// 종목을 검색해 즐겨찾기에 담는다. 결과를 고르면 담고 입력을 비운다(이미 있으면 알리기만 한다).
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            StockSearchField(
+                selectedCode: "", recent: [], onRemoveRecent: { _ in }, floating: true,
+                source: { q in model.futures.search(q, limit: 40).map { (code: $0.key, name: $0.name) } }
+            ) { key, _ in add(key: key) }
+            .frame(width: 320)
+            if let notice {
+                Text(notice).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .zIndex(1)
+    }
+
+    private func add(key: String) {
+        guard let ins = model.futures.resolve(key: key) else { return }
+        notice = model.addFuturesFavorite(code: ins.code, name: ins.title)
+            ? "즐겨찾기에 추가: \(ins.title)"
+            : "이미 즐겨찾기에 있음: \(ins.title)"
     }
 
     private var header: some View {

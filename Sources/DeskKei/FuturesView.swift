@@ -356,13 +356,7 @@ struct FuturesView: View {
 
     /// 기초자산을 고르면 가장 가까운 만기의 선물로 시작한다. 선물이 없으면 가장 가까운 만기의 첫 종목.
     private func selectUnderlying(_ code: String) {
-        let catalog = model.futures
-        if let expiry = catalog.expiries(underlying: code, kind: .future).first,
-           let ins = catalog.instrument(underlying: code, kind: .future, expiry: expiry, strike: 0) {
-            select(ins)
-        } else if let first = catalog.instruments(underlying: code).min(by: { ($0.expiry, $0.strike) < ($1.expiry, $1.strike) }) {
-            select(first)
-        }
+        if let ins = model.futures.resolve(key: FuturesCatalog.underlyingKey(code)) { select(ins) }
     }
 
     /// 종류·만기·행사가 중 바뀐 것만 반영해 같은 기초자산의 다른 종목으로 옮긴다.

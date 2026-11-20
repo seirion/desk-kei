@@ -101,6 +101,17 @@ public struct FuturesCatalog {
     /// 기초자산 이름/코드 부분 일치 (이름이 검색어로 시작하는 것을 먼저). 일치한 기초자산마다 만기 월별 선물을
     /// 각각 결과로 돌려주고(`삼성전자 선물 26.11`, `26.12` …), 선물이 없는 기초자산은 기초자산 자체를 돌려준다.
     /// 단축코드가 검색어로 시작하는 종목은 뒤에 붙인다.
+    /// 검색 결과 키(종목 코드 또는 "u:기초자산")를 종목으로 푼다.
+    /// 기초자산 키는 가장 가까운 만기의 선물, 선물이 없으면 가장 가까운 만기의 첫 종목.
+    public func resolve(key: String) -> FuturesInstrument? {
+        guard let underlying = Self.underlyingCode(fromKey: key) else { return byCode[key] }
+        if let expiry = expiries(underlying: underlying, kind: .future).first,
+           let ins = instrument(underlying: underlying, kind: .future, expiry: expiry, strike: 0) {
+            return ins
+        }
+        return instruments(underlying: underlying).min { ($0.expiry, $0.strike) < ($1.expiry, $1.strike) }
+    }
+
     public func search(_ query: String, limit: Int) -> [(key: String, name: String)] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
