@@ -106,7 +106,9 @@ private struct WatchRow: View {
 
         // 애프터마켓이 시작된 뒤에는 현재가(KRX) 가 애프터 가격이므로, 15:30 종가를 첫 줄, 애프터 가격을 둘째 줄에 둔다.
         // 종가는 분봉에서 오므로 분봉을 받기 전에는 한 줄로 보여 준다.
-        let close = MarketClock.isAfterSession() && krx != nil ? model.regularClose(code) : nil
+        // 프리장·애프터에 거래되지 않는 종목은 애프터에도 종가와 같은 값이라 한 줄로 둔다.
+        let offHours = model.tradesOffHours(code)
+        let close = MarketClock.isAfterSession() && krx != nil && offHours ? model.regularClose(code) : nil
         let closeChange = close.map { changeFromPrev(close: $0, prev: prev) }
 
         HStack {
@@ -117,6 +119,10 @@ private struct WatchRow: View {
                 Text(name).fontWeight(.medium)
                 if info?.halt == true { Badge(text: "정", color: .gray) }
                 if info?.designated == true { Badge(text: "관", color: .orange) }
+                if !offHours {
+                    Badge(text: "정규장만", color: .gray)
+                        .help("프리장·애프터장에서 거래되지 않는 종목입니다.")
+                }
                 Text(code).font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
