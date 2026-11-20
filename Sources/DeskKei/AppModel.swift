@@ -145,6 +145,9 @@ final class AppModel: ObservableObject {
     private var lastNxtState = MarketClock.isNxtHour()
     private var lastAfterSession = MarketClock.isAfterSession()
     private var lastPremarket = MarketClock.isNxtPremarket()
+    /// 관심종목 현재가를 REST 로 마지막으로 받은 시각. 앱이 다시 앞으로 나올 때 오래됐는지 보는 데 쓴다.
+    private var priceLoadedAt: Date?
+    private static let priceStaleSeconds: TimeInterval = 60
     private var clockTimer: Timer?
     private var observers: [NSObjectProtocol] = []
 
@@ -184,9 +187,19 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.checkMarketSession() }
         }
         let wake = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.reconnectSocket() }
+            Task { @MainActor in
+                self?.reconnectSocket()
+                // 깨어난 직후에는 네트워크가 아직 안 붙었을 수 있어 잠시 뒤에 시간대와 시세를 확인한다.
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                self?.resumeCheck()
+            }
         }
         observers.append(wake)
+        // 가려져 있던 앱이 다시 앞으로 나올 때: 가려진 동안 타이머가 늦춰졌을 수 있다.
+        let active = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.resumeCheck() }
+        }
+        observers.append(active)
     }
 
     private func loadStocks() async {
@@ -360,6 +373,7 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in
                     guard let self, self.activeGroup == group else { return }
                     self.krxPrices[code] = p
+                    self.priceLoadedAt = Date()
                 }
             }
             await MainActor.run { [weak self] in
@@ -533,21 +547,38 @@ final class AppModel: ObservableObject {
         saveState()
         // 선물옵션 계좌를 아직 확인하지 못했거나 없다고 나왔으면, 탭에 들어올 때 다시 확인한다(그 사이 개설했을 수 있다).
         if tab == .futures, futuresAccount != .available { Task { await refreshFuturesAccount() } }
-        if tab == .watchlist { loadCharts() }
+        if tab == .watchlist {
+            // 다른 탭에 있는 동안은 관심종목 실시간 구독이 꺼져 있었으므로 오래됐으면 다시 받는다.
+            if isPriceStale { loadGroupPrices() } else { loadCharts() }
+        }
         // 탭을 옮길 때마다 재구독: 그 사이 시간대(정규장/NXT)가 바뀌었을 수 있다.
         applySubscription()
     }
 
-    private func checkMarketSession() {
+    private var isPriceStale: Bool {
+        guard let at = priceLoadedAt else { return true }
+        return Date().timeIntervalSince(at) > Self.priceStaleSeconds
+    }
+
+    /// 앱이 다시 활성화되거나 깨어났을 때: 시간대가 바뀌었으면 구독·시세를 다시 잡고, 아니어도 관심종목 시세가 오래됐으면 다시 받는다.
+    private func resumeCheck() {
+        if checkMarketSession() { return }
+        if tab == .watchlist, isPriceStale { loadGroupPrices() }
+    }
+
+    /// 시간대(정규장/NXT/애프터)가 바뀌었으면 구독과 현재가를 다시 잡고 true.
+    @discardableResult
+    private func checkMarketSession() -> Bool {
         let nxt = MarketClock.isNxtHour()
         let after = MarketClock.isAfterSession()
         let pre = MarketClock.isNxtPremarket()
-        guard nxt != lastNxtState || after != lastAfterSession || pre != lastPremarket else { return }
+        guard nxt != lastNxtState || after != lastAfterSession || pre != lastPremarket else { return false }
         lastNxtState = nxt
         lastAfterSession = after
         lastPremarket = pre
         applySubscription()
         loadGroupPrices()
+        return true
     }
 
     private func applySubscription() {
