@@ -65,7 +65,7 @@ struct WatchlistView: View {
         HStack {
             Color.clear.frame(width: WatchRow.chartWidth, height: 1)
             Text("종목명").frame(maxWidth: .infinity, alignment: .leading)
-            Text(MarketClock.isAfterSession() ? "종가 / 애프터" : "현재가")
+            Text(MarketClock.isAfterSession() ? "종가 / 애프터" : MarketClock.isNxtPremarket() ? "현재가 (NXT)" : "현재가")
                 .frame(width: 130, alignment: .trailing)
             Text("등락").frame(width: 170, alignment: .trailing)
             Button("편집") { editing = true }
@@ -88,6 +88,8 @@ private struct GroupID: Identifiable {
 
 private struct WatchRow: View {
     static let chartWidth: CGFloat = 84
+    /// 애프터 시간에 첫 줄에 남기는 15:30 종가는 흐리게 보여 준다.
+    static let dimmed = 0.55
 
     @EnvironmentObject var model: AppModel
     let code: String
@@ -123,12 +125,10 @@ private struct WatchRow: View {
                 if let close, let closeChange {
                     Text(fmt(close))
                         .foregroundStyle(color(for: closeChange.direction))
-                    HStack(spacing: 3) {
-                        Badge(text: "A", color: .purple)
-                        Text(fmt(krxPrice))
-                    }
-                    .font(.callout)
-                    .foregroundStyle(color(for: krxChange.direction))
+                        .opacity(Self.dimmed)
+                    Text(fmt(krxPrice))
+                        .font(.callout)
+                        .foregroundStyle(color(for: krxChange.direction))
                 } else {
                     Text(krx == nil && model.priceLoading ? "…" : fmt(krxPrice))
                         .foregroundStyle(color(for: krxChange.direction))
@@ -141,6 +141,7 @@ private struct WatchRow: View {
                 if let closeChange {
                     Text(closeChange.text)
                         .foregroundStyle(color(for: closeChange.direction))
+                        .opacity(Self.dimmed)
                     Text(krxChange.text).font(.callout).foregroundStyle(color(for: krxChange.direction))
                 } else {
                     Text(krx == nil ? "" : krxChange.text)

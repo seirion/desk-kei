@@ -19,6 +19,12 @@ public enum MarketClock {
         return (m >= 8 * 60 && m < 9 * 60) || (m >= 15 * 60 + 30 && m < 20 * 60)
     }
 
+    /// NXT 프리마켓: 08:00~08:50. 이 시간에는 관심종목이 NXT 가격만 보여 준다.
+    public static func isNxtPremarket(_ date: Date = Date()) -> Bool {
+        let m = minutes(date)
+        return m >= 8 * 60 && m < 8 * 60 + 50
+    }
+
     /// 정규장: 09:00~15:30
     public static func isRegularHour(_ date: Date = Date()) -> Bool {
         let m = minutes(date)

@@ -109,6 +109,7 @@ final class AppModel: ObservableObject {
             saveState()
         }
     }
+    /// 관심종목에 보여 줄 현재가. 정규장·애프터는 KRX, NXT 프리마켓(08:00~08:50)에는 NXT 가격이다.
     @Published private(set) var krxPrices: [String: KisPrice] = [:]
     @Published private(set) var priceLoading = false
     @Published private(set) var charts: [String: [MinuteBar]] = [:]
@@ -143,6 +144,7 @@ final class AppModel: ObservableObject {
     private var chartDay = ""
     private var lastNxtState = MarketClock.isNxtHour()
     private var lastAfterSession = MarketClock.isAfterSession()
+    private var lastPremarket = MarketClock.isNxtPremarket()
     private var clockTimer: Timer?
     private var observers: [NSObjectProtocol] = []
 
@@ -354,7 +356,7 @@ final class AppModel: ObservableObject {
         let group = activeGroup
         priceLoading = true
         priceTask = Task { [weak self] in
-            await client.prices(codes: codes, market: "J") { code, p in
+            await client.prices(codes: codes, market: MarketClock.isNxtPremarket() ? "NX" : "J") { code, p in
                 Task { @MainActor in
                     guard let self, self.activeGroup == group else { return }
                     self.krxPrices[code] = p
@@ -414,7 +416,7 @@ final class AppModel: ObservableObject {
     private func fetchSingle(_ code: String) {
         guard let client else { return }
         Task {
-            if let p = try? await client.price(code: code) { krxPrices[code] = p }
+            if let p = try? await client.price(code: code, market: MarketClock.isNxtPremarket() ? "NX" : "J") { krxPrices[code] = p }
         }
     }
 
@@ -539,9 +541,11 @@ final class AppModel: ObservableObject {
     private func checkMarketSession() {
         let nxt = MarketClock.isNxtHour()
         let after = MarketClock.isAfterSession()
-        guard nxt != lastNxtState || after != lastAfterSession else { return }
+        let pre = MarketClock.isNxtPremarket()
+        guard nxt != lastNxtState || after != lastAfterSession || pre != lastPremarket else { return }
         lastNxtState = nxt
         lastAfterSession = after
+        lastPremarket = pre
         applySubscription()
         loadGroupPrices()
     }
@@ -556,8 +560,8 @@ final class AppModel: ObservableObject {
         live.futuresBook = nil
         switch tab {
         case .watchlist:
-            // 관심종목은 NXT 가 아니라 KRX 체결만 받는다(애프터마켓 가격 포함).
-            socket.subscribeTrades(currentCodes, krxOnly: true)
+            // 관심종목은 NXT 프리마켓(08:00~08:50)에만 NXT 체결을 받고, 그 밖에는 KRX 체결(애프터마켓 포함)을 받는다.
+            socket.subscribeTrades(currentCodes, krxOnly: !MarketClock.isNxtPremarket())
         case .order:
             if !orderCode.isEmpty {
                 socket.subscribeTrades([orderCode])
@@ -592,7 +596,7 @@ final class AppModel: ObservableObject {
                 let prev = t.price - (t.sign == "4" || t.sign == "5" ? -t.change : t.change)
                 let price = KisPrice(price: t.price, prevPrice: prev, change: t.change, sign: t.sign, rate: t.rate,
                                      open: t.open, high: t.high, low: t.low, volume: t.volume)
-                if !t.isNxt { krxPrices[t.code] = price }
+                krxPrices[t.code] = price
                 appendLive(code: t.code, price: t.price)
             }
         case .orderBook(let book):
