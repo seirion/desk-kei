@@ -110,7 +110,6 @@ final class AppModel: ObservableObject {
         }
     }
     @Published private(set) var krxPrices: [String: KisPrice] = [:]
-    @Published private(set) var nxtPrices: [String: KisPrice] = [:]
     @Published private(set) var priceLoading = false
     @Published private(set) var charts: [String: [MinuteBar]] = [:]
 
@@ -143,6 +142,7 @@ final class AppModel: ObservableObject {
     private var chartFetchedAt: [String: Date] = [:]
     private var chartDay = ""
     private var lastNxtState = MarketClock.isNxtHour()
+    private var lastAfterSession = MarketClock.isAfterSession()
     private var clockTimer: Timer?
     private var observers: [NSObjectProtocol] = []
 
@@ -299,7 +299,6 @@ final class AppModel: ObservableObject {
     private func accountChanged() {
         assetsVersion += 1
         krxPrices = [:]
-        nxtPrices = [:]
         Task { await startSession() }
     }
 
@@ -343,7 +342,6 @@ final class AppModel: ObservableObject {
         guard old != activeGroup else { return }
         saveState()
         krxPrices = [:]
-        nxtPrices = [:]
         loadGroupPrices()
         if tab == .watchlist { applySubscription() }
     }
@@ -360,14 +358,6 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in
                     guard let self, self.activeGroup == group else { return }
                     self.krxPrices[code] = p
-                }
-            }
-            if !MarketClock.isRegularHour(), !Task.isCancelled {
-                await client.prices(codes: codes, market: "NX") { code, p in
-                    Task { @MainActor in
-                        guard let self, self.activeGroup == group else { return }
-                        self.nxtPrices[code] = p
-                    }
                 }
             }
             await MainActor.run { [weak self] in
@@ -402,6 +392,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 15:30 정규장 종가. 오늘 1분봉에서 15:30 이전 마지막 봉의 가격이다. 분봉을 아직 못 받았으면 nil.
+    func regularClose(_ code: String) -> Int? {
+        guard let bar = charts[code]?.last(where: { $0.minute <= 15 * 60 + 30 && $0.minute >= 9 * 60 }), bar.price > 0 else { return nil }
+        return bar.price
+    }
+
     private func setChart(_ code: String, _ bars: [MinuteBar]) {
         // 조회하는 사이 실시간으로 이어 붙인 점이 더 최신이면 남긴다.
         let newest = bars.last?.minute ?? -1
@@ -419,7 +415,6 @@ final class AppModel: ObservableObject {
         guard let client else { return }
         Task {
             if let p = try? await client.price(code: code) { krxPrices[code] = p }
-            if !MarketClock.isRegularHour(), let n = try? await client.price(code: code, market: "NX") { nxtPrices[code] = n }
         }
     }
 
@@ -543,8 +538,10 @@ final class AppModel: ObservableObject {
 
     private func checkMarketSession() {
         let nxt = MarketClock.isNxtHour()
-        guard nxt != lastNxtState else { return }
+        let after = MarketClock.isAfterSession()
+        guard nxt != lastNxtState || after != lastAfterSession else { return }
         lastNxtState = nxt
+        lastAfterSession = after
         applySubscription()
         loadGroupPrices()
     }
@@ -559,7 +556,8 @@ final class AppModel: ObservableObject {
         live.futuresBook = nil
         switch tab {
         case .watchlist:
-            socket.subscribeTrades(currentCodes)
+            // 관심종목은 NXT 가 아니라 KRX 체결만 받는다(애프터마켓 가격 포함).
+            socket.subscribeTrades(currentCodes, krxOnly: true)
         case .order:
             if !orderCode.isEmpty {
                 socket.subscribeTrades([orderCode])
@@ -594,7 +592,7 @@ final class AppModel: ObservableObject {
                 let prev = t.price - (t.sign == "4" || t.sign == "5" ? -t.change : t.change)
                 let price = KisPrice(price: t.price, prevPrice: prev, change: t.change, sign: t.sign, rate: t.rate,
                                      open: t.open, high: t.high, low: t.low, volume: t.volume)
-                if t.isNxt { nxtPrices[t.code] = price } else { krxPrices[t.code] = price }
+                if !t.isNxt { krxPrices[t.code] = price }
                 appendLive(code: t.code, price: t.price)
             }
         case .orderBook(let book):

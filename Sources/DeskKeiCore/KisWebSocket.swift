@@ -13,7 +13,8 @@ public final class KisWebSocket: NSObject {
     private var wantsConnection = false
     private var reconnectWork: DispatchWorkItem?
 
-    private var tradeCodes = Set<String>()
+    /// 주식 체결 구독: 종목코드 → tr_id (해지할 때 구독한 tr_id 를 그대로 쓰려고 기억한다)
+    private var tradeCodes: [String: String] = [:]
     private var bookCodes = Set<String>()
     /// 주식선물옵션 호가 구독: 단축코드 → tr_id
     private var futuresBooks: [String: String] = [:]
@@ -92,10 +93,12 @@ public final class KisWebSocket: NSObject {
 
     // MARK: 구독
 
-    /// 체결 구독 (기존 구독은 유지)
-    public func subscribeTrades(_ codes: [String]) {
-        for code in codes where tradeCodes.insert(code).inserted {
-            sendTrade(code, subscribe: true)
+    /// 체결 구독 (기존 구독은 유지). krxOnly 면 시간대와 관계없이 KRX 체결(애프터마켓 포함)만 받는다.
+    public func subscribeTrades(_ codes: [String], krxOnly: Bool = false) {
+        let trId = !krxOnly && MarketClock.isNxtHour() ? "H0NXCNT0" : "H0STCNT0"
+        for code in codes where tradeCodes[code] == nil {
+            tradeCodes[code] = trId
+            send(trId: trId, key: code, subscribe: true)
         }
     }
 
@@ -141,7 +144,7 @@ public final class KisWebSocket: NSObject {
     }
 
     public func unsubscribeAll() {
-        for code in tradeCodes { sendTrade(code, subscribe: false) }
+        for (code, trId) in tradeCodes { send(trId: trId, key: code, subscribe: false) }
         for code in bookCodes { sendBook(code, subscribe: false) }
         for (code, trId) in futuresBooks { send(trId: trId, key: code, subscribe: false) }
         for (code, trId) in futuresTrades { send(trId: trId, key: code, subscribe: false) }
@@ -149,10 +152,6 @@ public final class KisWebSocket: NSObject {
         bookCodes.removeAll()
         futuresBooks.removeAll()
         futuresTrades.removeAll()
-    }
-
-    private func sendTrade(_ code: String, subscribe: Bool) {
-        send(trId: MarketClock.isNxtHour() ? "H0NXCNT0" : "H0STCNT0", key: code, subscribe: subscribe)
     }
 
     private func sendBook(_ code: String, subscribe: Bool) {
@@ -177,7 +176,7 @@ public final class KisWebSocket: NSObject {
 
     /// 연결 직후 기존 구독 복원
     private func restoreSubscriptions() {
-        tradeCodes.forEach { sendTrade($0, subscribe: true) }
+        for (code, trId) in tradeCodes { send(trId: trId, key: code, subscribe: true) }
         bookCodes.forEach { sendBook($0, subscribe: true) }
         for (code, trId) in futuresBooks { send(trId: trId, key: code, subscribe: true) }
         for (code, trId) in futuresTrades { send(trId: trId, key: code, subscribe: true) }

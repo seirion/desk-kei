@@ -65,7 +65,7 @@ struct WatchlistView: View {
         HStack {
             Color.clear.frame(width: WatchRow.chartWidth, height: 1)
             Text("종목명").frame(maxWidth: .infinity, alignment: .leading)
-            Text("현재가" + (!MarketClock.isRegularHour() && MarketClock.isNxtHour() ? " / NXT" : ""))
+            Text(MarketClock.isAfterSession() ? "종가 / 애프터" : "현재가")
                 .frame(width: 130, alignment: .trailing)
             Text("등락").frame(width: 170, alignment: .trailing)
             Button("편집") { editing = true }
@@ -96,11 +96,16 @@ private struct WatchRow: View {
         let info = model.stocks[code]
         let name = info?.nameKr ?? code
         let krx = model.krxPrices[code]
-        let nxt = model.nxtPrices[code].flatMap { $0.price > 0 ? $0 : nil }
+        let prev = krx?.prevPrice ?? info?.prevPrice ?? 0
 
         // 시세를 아직 못 받았으면 마스터 기준가(전일 종가)를 보여 준다.
         let krxPrice = krx?.price ?? info?.prevPrice ?? 0
         let krxChange = formatChange(change: krx?.change ?? 0, sign: krx?.sign ?? "3", rate: krx?.rate ?? 0)
+
+        // 애프터마켓이 시작된 뒤에는 현재가(KRX) 가 애프터 가격이므로, 15:30 종가를 첫 줄, 애프터 가격을 둘째 줄에 둔다.
+        // 종가는 분봉에서 오므로 분봉을 받기 전에는 한 줄로 보여 준다.
+        let close = MarketClock.isAfterSession() && krx != nil ? model.regularClose(code) : nil
+        let closeChange = close.map { changeFromPrev(close: $0, prev: prev) }
 
         HStack {
             Sparkline(bars: model.charts[code] ?? [], prevClose: krx?.prevPrice ?? info?.prevPrice ?? 0)
@@ -115,26 +120,31 @@ private struct WatchRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(krx == nil && model.priceLoading ? "…" : fmt(krxPrice))
-                    .foregroundStyle(color(for: krxChange.direction))
-                if let nxt {
+                if let close, let closeChange {
+                    Text(fmt(close))
+                        .foregroundStyle(color(for: closeChange.direction))
                     HStack(spacing: 3) {
-                        Badge(text: "N", color: .purple)
-                        Text(fmt(nxt.price))
+                        Badge(text: "A", color: .purple)
+                        Text(fmt(krxPrice))
                     }
                     .font(.callout)
-                    .foregroundStyle(color(for: nxt.direction))
+                    .foregroundStyle(color(for: krxChange.direction))
+                } else {
+                    Text(krx == nil && model.priceLoading ? "…" : fmt(krxPrice))
+                        .foregroundStyle(color(for: krxChange.direction))
                 }
             }
             .monospacedDigit()
             .frame(width: 130, alignment: .trailing)
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(krx == nil ? "" : krxChange.text)
-                    .foregroundStyle(color(for: krxChange.direction))
-                if let nxt {
-                    let c = formatChange(change: nxt.change, sign: nxt.sign, rate: nxt.rate)
-                    Text(c.text).font(.callout).foregroundStyle(color(for: c.direction))
+                if let closeChange {
+                    Text(closeChange.text)
+                        .foregroundStyle(color(for: closeChange.direction))
+                    Text(krxChange.text).font(.callout).foregroundStyle(color(for: krxChange.direction))
+                } else {
+                    Text(krx == nil ? "" : krxChange.text)
+                        .foregroundStyle(color(for: krxChange.direction))
                 }
             }
             .monospacedDigit()
@@ -150,6 +160,14 @@ private struct WatchRow: View {
             Button("관심종목에서 제거", role: .destructive) { model.toggleWatch(code) }
         }
     }
+}
+
+/// 전일 종가 대비 종가의 등락. 상·하한가 구분은 하지 않고 방향만 본다.
+private func changeFromPrev(close: Int, prev: Int) -> (text: String, direction: PriceDirection) {
+    guard prev > 0 else { return ("", .flat) }
+    let diff = close - prev
+    let rate = Double(abs(diff)) / Double(prev) * 100
+    return formatChange(change: abs(diff), sign: diff > 0 ? "2" : diff < 0 ? "5" : "3", rate: rate)
 }
 
 private struct EditWatchlistSheet: View {

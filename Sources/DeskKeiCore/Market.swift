@@ -25,6 +25,11 @@ public enum MarketClock {
         return m >= 9 * 60 && m < 15 * 60 + 30
     }
 
+    /// 정규장 종료 뒤 애프터마켓이 시작된 시각부터 자정까지(16:00~). 관심종목이 15:30 종가와 애프터 가격을 두 줄로 보여 주는 구간.
+    public static func isAfterSession(_ date: Date = Date()) -> Bool {
+        minutes(date) >= 16 * 60
+    }
+
     /// KRX 애프터마켓: 16:00~20:00. 시장가 주문이 없고 지정가는 주문구분 41 을 쓴다.
     public static func isKrxAfterMarket(_ date: Date = Date()) -> Bool {
         let m = minutes(date)
