@@ -6,6 +6,10 @@ struct Sparkline: View {
     let bars: [MinuteBar]
     let prevClose: Int
 
+    private static let regularOpen = 9 * 60
+    private static let regularClose = 15 * 60 + 30
+    private static let offHoursOpacity = 0.4
+
     var body: some View {
         Canvas { ctx, size in
             guard bars.count > 1, let last = bars.last else { return }
@@ -40,7 +44,15 @@ struct Sparkline: View {
             fill.closeSubpath()
             ctx.fill(fill, with: .linearGradient(Gradient(colors: [tint.opacity(0.25), tint.opacity(0)]),
                                                  startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
-            ctx.stroke(line, with: .color(tint), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+            // 프리장(09:00 전)·애프터(15:30 후)는 연하게, 정규장 구간만 원래 색으로 위에 덧그린다.
+            ctx.stroke(line, with: .color(tint.opacity(Self.offHoursOpacity)), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+            var regular = Path()
+            var started = false
+            for b in bars where b.minute >= Self.regularOpen && b.minute <= Self.regularClose {
+                let p = point(b.minute, b.price)
+                if started { regular.addLine(to: p) } else { regular.move(to: p); started = true }
+            }
+            ctx.stroke(regular, with: .color(tint), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
         }
     }
 }
