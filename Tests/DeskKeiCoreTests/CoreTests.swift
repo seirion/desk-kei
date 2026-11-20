@@ -556,3 +556,36 @@ import CommonCrypto
         #expect(try JSONDecoder().decode(FuturesFavoritesFile.self, from: Data("{\"items\":[]}".utf8)).items.isEmpty)
     }
 }
+
+@Suite struct FuturesRealtimeTradeTests {
+    // 2026-11-20 장중에 실제로 받은 체결 (뒤쪽 필드는 줄였다)
+    private static let future = "0|H0ZFCNT0|001|A11612^091609^188800^5^-8300^-4.21^188400^189700^186600^96^142997^269653927000^188741.44^400.00^0.03^0.00^0.00^-6500.00^4071828^-19006^000000^2^400"
+    private static let option = "0|H0ZOCNT0|001|B11612095^091649^1600.00^5^-1100.00^-40.74^1640.00^1640.00^1560.00^1^26^415600^59479.42^2494^0^000000^5^-40.00"
+
+    @Test func decodesStockFuturesTrade() {
+        var d = RealtimeDecoder()
+        guard case .event(.futuresTrade(let t)) = d.decode(Self.future) else {
+            Issue.record("선물 체결이 해석되지 않음"); return
+        }
+        #expect(t == RealTimeTrade(code: "A11612", price: 188800, change: 8300, sign: "5", rate: 4.21,
+                                   volume: 142997, open: 188400, high: 189700, low: 186600, isNxt: false))
+    }
+
+    @Test func decodesStockOptionTradeWithDecimalPrices() {
+        var d = RealtimeDecoder()
+        guard case .event(.futuresTrade(let t)) = d.decode(Self.option) else {
+            Issue.record("옵션 체결이 해석되지 않음"); return
+        }
+        #expect(t == RealTimeTrade(code: "B11612095", price: 1600, change: 1100, sign: "5", rate: 40.74,
+                                   volume: 26, open: 1640, high: 1640, low: 1560, isNxt: false))
+    }
+
+    @Test func infersSignWhenMissingAndRejectsShortMessages() {
+        var d = RealtimeDecoder()
+        guard case .event(.futuresTrade(let up)) = d.decode("0|H0ZFCNT0|001|A11612^091609^188800^^300^0.16^1^2^3^4^5") else {
+            Issue.record("부호가 비어 있어도 해석돼야 함"); return
+        }
+        #expect(up.sign == "2" && up.change == 300)
+        #expect(d.decode("0|H0ZFCNT0|001|A11612^091609^188800") == .ignored)
+    }
+}

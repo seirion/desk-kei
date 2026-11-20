@@ -4,6 +4,8 @@ import CommonCrypto
 public enum RealtimeEvent: Equatable {
     case trade(RealTimeTrade)
     case orderBook(OrderBook)
+    /// 주식선물·주식옵션 체결가 (code 는 선물옵션 단축코드)
+    case futuresTrade(RealTimeTrade)
     case execution(OrderExecution)
 }
 
@@ -61,6 +63,8 @@ public struct RealtimeDecoder {
             return Self.futuresOrderBook(fields, option: false).map { .event(.orderBook($0)) } ?? .ignored
         case "H0ZOASP0":
             return Self.futuresOrderBook(fields, option: true).map { .event(.orderBook($0)) } ?? .ignored
+        case "H0ZFCNT0", "H0ZOCNT0":
+            return Self.futuresTrade(fields).map { .event(.futuresTrade($0)) } ?? .ignored
         case "H0STCNI0":
             return Self.execution(fields).map { .event(.execution($0)) } ?? .ignored
         default:
@@ -90,6 +94,30 @@ public struct RealtimeDecoder {
             high: at(8),
             low: at(9),
             isNxt: isNxt
+        )
+    }
+
+    // 주식선물(H0ZFCNT0)·주식옵션(H0ZOCNT0) 체결가: 앞 11개 필드의 순서가 같다.
+    // [0]종목 [1]시각 [2]현재가 [3]대비부호 [4]전일대비(부호 포함) [5]등락률 [6]시가 [7]고가 [8]저가 [9]체결량 [10]누적거래량
+    static func futuresTrade(_ f: [String]) -> RealTimeTrade? {
+        guard f.count >= 11 else { return nil }
+        func at(_ i: Int) -> Int { Int(Double(f[i]) ?? 0) }
+        let delta = Double(f[4]) ?? 0
+        var sign = f[3]
+        if !["1", "2", "3", "4", "5"].contains(sign) {
+            sign = delta > 0 ? "2" : delta < 0 ? "5" : "3"
+        }
+        return RealTimeTrade(
+            code: f[0],
+            price: at(2),
+            change: Int(abs(delta)),
+            sign: sign,
+            rate: abs(Double(f[5]) ?? 0),
+            volume: at(10),
+            open: at(6),
+            high: at(7),
+            low: at(8),
+            isNxt: false
         )
     }
 

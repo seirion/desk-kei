@@ -20,7 +20,7 @@ struct FuturesRootView: View {
             Divider()
             ZStack {
                 sub(.trade) { FuturesView() }
-                sub(.favorites) { FuturesFavoritesView() }
+                sub(.favorites) { FuturesFavoritesView(live: model.live) }
             }
         }
     }
@@ -37,6 +37,8 @@ struct FuturesRootView: View {
 /// 선물/옵션 즐겨찾기. 행을 누르면 거래 탭에서 그 종목을 연다.
 struct FuturesFavoritesView: View {
     @EnvironmentObject var model: AppModel
+    /// 즐겨찾기 체결가는 초당 여러 번 바뀌므로 AppModel 과 분리된 LiveMarket 을 직접 구독한다.
+    @ObservedObject var live: LiveMarket
     @State private var quotes: [String: FuturesQuote] = [:]
     @State private var editing = false
     @State private var notice: String?
@@ -64,7 +66,7 @@ struct FuturesFavoritesView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(items, id: \.code) { item in
-                            FavoriteRow(item: item, quote: quotes[item.code])
+                            FavoriteRow(item: item, price: displayPrice(item.code))
                             Divider()
                         }
                     }
@@ -73,8 +75,11 @@ struct FuturesFavoritesView: View {
         }
         .task(id: PollKey(active: model.tab == .futures && model.futuresSubTab == .favorites, codes: items.map(\.code))) {
             guard model.tab == .futures, model.futuresSubTab == .favorites, !items.isEmpty else { return }
+            // 처음 한 바퀴는 모든 종목을 조회해 기준값을 채운다. 이후에는 실시간으로 받는 종목은 건너뛴다.
+            var first = true
             while !Task.isCancelled {
-                await refresh()
+                await refresh(all: first)
+                first = false
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
@@ -96,6 +101,9 @@ struct FuturesFavoritesView: View {
             .frame(width: 320)
             if let notice {
                 Text(notice).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            } else if items.count > AppModel.futuresRealtimeLimit {
+                Text("실시간은 앞의 \(AppModel.futuresRealtimeLimit)개까지, 나머지는 2초 간격으로 조회합니다")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -128,11 +136,24 @@ struct FuturesFavoritesView: View {
         .padding(.vertical, 6)
     }
 
-    /// 즐겨찾기를 한 바퀴 돌며 시세를 받는다. 초당 호출 제한을 넘지 않도록 사이를 띄우고, 실패한 종목은 이전 값을 둔다.
-    private func refresh() async {
+    /// 화면에 보여 줄 가격. 소켓이 연결돼 있고 체결을 받은 종목은 실시간 값, 아니면 REST 로 조회한 값.
+    private func displayPrice(_ code: String) -> FavoritePrice? {
+        if model.wsConnected, let t = live.futuresTrades[code] {
+            return FavoritePrice(price: t.price, change: t.change, sign: t.sign, rate: t.rate)
+        }
+        return quotes[code].map {
+            FavoritePrice(price: $0.price.price, change: $0.price.change, sign: $0.price.sign, rate: $0.price.rate)
+        }
+    }
+
+    /// 시세를 REST 로 받는다. 초당 호출 제한을 넘지 않도록 사이를 띄우고, 실패한 종목은 이전 값을 둔다.
+    /// all 이 false 면 소켓으로 실시간 체결을 받고 있는 종목은 건너뛴다(소켓이 끊기면 다시 조회한다).
+    private func refresh(all: Bool) async {
         guard let client = model.client else { return }
+        let streaming = Set(model.futuresRealtimeItems.map(\.code))
         for item in items {
             if Task.isCancelled { return }
+            if !all, model.wsConnected, streaming.contains(item.code), quotes[item.code] != nil { continue }
             guard let ins = model.futures.byCode[item.code] else { continue }
             if let q = (try? await client.futuresQuote(code: ins.code, kind: ins.kind)) ?? nil {
                 quotes[item.code] = q
@@ -142,16 +163,23 @@ struct FuturesFavoritesView: View {
     }
 }
 
+private struct FavoritePrice {
+    let price: Int
+    let change: Int
+    let sign: String
+    let rate: Double
+}
+
 private struct FavoriteRow: View {
     @EnvironmentObject var model: AppModel
     let item: RecentStock
-    let quote: FuturesQuote?
+    let price: FavoritePrice?
 
     var body: some View {
         let ins = model.futures.byCode[item.code]
         // 마스터가 아직 로딩 중일 수 있으므로, 비어 있을 때는 종료된 종목으로 단정하지 않는다.
         let ended = ins == nil && !model.futures.isEmpty
-        let change = quote.map { formatChange(change: $0.price.change, sign: $0.price.sign, rate: $0.price.rate) }
+        let change = price.map { formatChange(change: $0.change, sign: $0.sign, rate: $0.rate) }
 
         Button { model.goToFutures(code: item.code) } label: {
             HStack {
@@ -162,7 +190,7 @@ private struct FavoriteRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(quote.map { fmt($0.price.price) } ?? "—")
+                Text(price.map { fmt($0.price) } ?? "—")
                     .foregroundStyle(color(for: change?.direction ?? .flat))
                     .frame(width: 120, alignment: .trailing)
                 Text(change?.text ?? "")

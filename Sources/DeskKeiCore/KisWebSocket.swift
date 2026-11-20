@@ -17,6 +17,8 @@ public final class KisWebSocket: NSObject {
     private var bookCodes = Set<String>()
     /// 주식선물옵션 호가 구독: 단축코드 → tr_id
     private var futuresBooks: [String: String] = [:]
+    /// 주식선물옵션 체결가 구독: 단축코드 → tr_id
+    private var futuresTrades: [String: String] = [:]
     private var executionKey: String?
 
     public var onEvent: ((RealtimeEvent) -> Void)?
@@ -111,6 +113,20 @@ public final class KisWebSocket: NSObject {
         send(trId: trId, key: code, subscribe: true)
     }
 
+    /// 주식선물(H0ZFCNT0)·주식옵션(H0ZOCNT0) 실시간 체결가. 주어진 목록에 맞춰 구독을 추가하고 빠진 것은 해지한다.
+    public func setFuturesTrades(_ items: [(code: String, kind: FuturesKind)]) {
+        var wanted: [String: String] = [:]
+        for item in items { wanted[item.code] = item.kind.isOption ? "H0ZOCNT0" : "H0ZFCNT0" }
+        for (code, trId) in futuresTrades where wanted[code] != trId {
+            send(trId: trId, key: code, subscribe: false)
+            futuresTrades[code] = nil
+        }
+        for (code, trId) in wanted where futuresTrades[code] == nil {
+            futuresTrades[code] = trId
+            send(trId: trId, key: code, subscribe: true)
+        }
+    }
+
     public func subscribeExecutions() {
         guard !customerId.isEmpty else { return }
         executionKey = customerId
@@ -121,9 +137,11 @@ public final class KisWebSocket: NSObject {
         for code in tradeCodes { sendTrade(code, subscribe: false) }
         for code in bookCodes { sendBook(code, subscribe: false) }
         for (code, trId) in futuresBooks { send(trId: trId, key: code, subscribe: false) }
+        for (code, trId) in futuresTrades { send(trId: trId, key: code, subscribe: false) }
         tradeCodes.removeAll()
         bookCodes.removeAll()
         futuresBooks.removeAll()
+        futuresTrades.removeAll()
     }
 
     private func sendTrade(_ code: String, subscribe: Bool) {
@@ -155,6 +173,7 @@ public final class KisWebSocket: NSObject {
         tradeCodes.forEach { sendTrade($0, subscribe: true) }
         bookCodes.forEach { sendBook($0, subscribe: true) }
         for (code, trId) in futuresBooks { send(trId: trId, key: code, subscribe: true) }
+        for (code, trId) in futuresTrades { send(trId: trId, key: code, subscribe: true) }
         if let executionKey { send(trId: "H0STCNI0", key: executionKey, subscribe: true) }
     }
 }

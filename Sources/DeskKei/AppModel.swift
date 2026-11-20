@@ -61,6 +61,8 @@ final class LiveMarket: ObservableObject {
     @Published var liveTrade: RealTimeTrade?
     /// 선물/옵션 화면의 실시간 호가 (최대 10호가)
     @Published var futuresBook: OrderBook?
+    /// 선물/옵션 즐겨찾기의 실시간 체결가 (단축코드별 마지막 체결)
+    @Published var futuresTrades: [String: RealTimeTrade] = [:]
 }
 
 @MainActor
@@ -186,6 +188,7 @@ final class AppModel: ObservableObject {
         do { futures = FuturesCatalog(instruments: try await FuturesMaster.load()) }
         catch { errorMessage = "선물옵션 종목 정보를 불러오지 못했습니다: \(error.localizedDescription)" }
         futuresUpdatedAt = FuturesMaster.cachedAt()
+        syncFuturesTrades()
     }
 
     /// 캐시와 상관없이 종목 마스터(주식·선물옵션)를 지금 새로 받는다.
@@ -204,6 +207,7 @@ final class AppModel: ObservableObject {
         do {
             futures = FuturesCatalog(instruments: try await FuturesMaster.load(force: true))
             futuresUpdatedAt = FuturesMaster.cachedAt()
+            syncFuturesTrades()
         } catch {
             failures.append("선물옵션: \(error.localizedDescription)")
         }
@@ -431,19 +435,39 @@ final class AppModel: ObservableObject {
     func toggleFuturesFavorite(code: String, name: String) {
         futuresFavorites.toggle(code: code, name: name)
         futuresFavoritesStore.save(futuresFavorites)
+        syncFuturesTrades()
     }
 
     /// 검색에서 고른 종목을 즐겨찾기에 담는다. 새로 담았으면 true, 이미 있으면 false.
     @discardableResult
     func addFuturesFavorite(code: String, name: String) -> Bool {
         let added = futuresFavorites.add(code: code, name: name)
-        if added { futuresFavoritesStore.save(futuresFavorites) }
+        if added {
+            futuresFavoritesStore.save(futuresFavorites)
+            syncFuturesTrades()
+        }
         return added
     }
 
     func setFuturesFavoriteOrder(_ codes: [String]) {
         futuresFavorites.reorder(codes)
         futuresFavoritesStore.save(futuresFavorites)
+        syncFuturesTrades()
+    }
+
+    /// KIS 는 WebSocket 한 세션에 구독을 41건까지 허용한다. 체결통보·호가 구독을 빼고 남는 만큼만 즐겨찾기에 쓴다.
+    static let futuresRealtimeLimit = 30
+
+    /// 즐겨찾기 중 실시간 체결가를 받는 종목: 마스터에 있는 종목을 앞에서부터 limit 개.
+    var futuresRealtimeItems: [(code: String, kind: FuturesKind)] {
+        futuresFavorites.items.compactMap { futures.byCode[$0.code] }
+            .prefix(Self.futuresRealtimeLimit).map { (code: $0.code, kind: $0.kind) }
+    }
+
+    /// 선물/옵션 탭을 보는 동안 즐겨찾기 체결가 구독을 목록에 맞춘다.
+    private func syncFuturesTrades() {
+        guard tab == .futures, let socket else { return }
+        socket.setFuturesTrades(futuresRealtimeItems)
     }
 
     /// 선물/옵션 화면에서 종목이 바뀌었을 때
@@ -515,8 +539,10 @@ final class AppModel: ObservableObject {
                 loadInitialOrderBook()
             }
         case .futures:
-            // 시세는 REST 로 주기적으로 조회하고, 호가만 실시간(최대 10호가)으로 받는다.
+            // 거래 탭의 시세는 REST 로 주기적으로 조회하고, 호가만 실시간(최대 10호가)으로 받는다.
             if !futuresCode.isEmpty { socket.subscribeFuturesBook(code: futuresCode, kind: futuresKind) }
+            // 즐겨찾기 종목의 체결가도 실시간으로 받는다.
+            socket.setFuturesTrades(futuresRealtimeItems)
         case .assets:
             break
         }
@@ -546,6 +572,8 @@ final class AppModel: ObservableObject {
         case .orderBook(let book):
             if book.code == futuresCode, tab == .futures { live.futuresBook = book }
             else if book.code == orderCode { live.orderBook = book; orderBookIsLive = true }
+        case .futuresTrade(let t):
+            live.futuresTrades[t.code] = t
         case .execution(let exec):
             toasts.append(exec)
             assetsVersion += 1
