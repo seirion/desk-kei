@@ -86,6 +86,8 @@ final class AppModel: ObservableObject {
 
     // 종목 / 관심종목
     @Published private(set) var stocks: [String: StockInfo] = [:]
+    /// NXT 거래 종목 코드. nil 이면 아직 못 받은 것이므로 모든 종목을 거래 가능으로 본다.
+    @Published private(set) var nxtCodes: Set<String>?
     @Published private(set) var masterUpdatedAt: Date?
     @Published private(set) var masterRefreshing = false
     @Published private(set) var masterError: String?
@@ -180,6 +182,7 @@ final class AppModel: ObservableObject {
     func start() {
         NSApplication.shared.appearance = appearance.nsAppearance
         Task { await loadStocks() }
+        Task { await loadNxtCodes() }
         Task { await loadFutures() }
         if account.hasCredentials { Task { await startSession() } } else if accounts.isEmpty { openSettings(.accounts) }
 
@@ -206,6 +209,24 @@ final class AppModel: ObservableObject {
         do { stocks = try await StockMaster.load() }
         catch { errorMessage = "종목 정보를 불러오지 못했습니다: \(error.localizedDescription)" }
         masterUpdatedAt = StockMaster.cachedAt()
+    }
+
+    /// 목록을 못 받아도 표시만 빠질 뿐이라 오류를 띄우지 않는다.
+    private func loadNxtCodes() async {
+        guard let codes = try? await NxtMaster.load() else { return }
+        nxtCodes = codes
+        // 프리마켓에는 거래 불가 종목을 NXT 로 조회하지 않으므로 목록이 들어오면 다시 받는다.
+        if MarketClock.isNxtPremarket() { loadGroupPrices() }
+    }
+
+    /// 프리장·애프터에 거래되는 종목인지. NXT 목록을 못 받았으면 true.
+    func tradesOffHours(_ code: String) -> Bool {
+        nxtCodes?.contains(code) ?? true
+    }
+
+    /// 지금 시간대에 현재가를 어느 시장으로 조회할지. 프리마켓에는 NXT 거래 종목만 NXT, 나머지는 KRX(전일 기준).
+    private func priceMarket(for code: String) -> String {
+        MarketClock.isNxtPremarket() && tradesOffHours(code) ? "NX" : "J"
     }
 
     private func loadFutures() async {
@@ -235,6 +256,8 @@ final class AppModel: ObservableObject {
         } catch {
             failures.append("선물옵션: \(error.localizedDescription)")
         }
+        do { nxtCodes = try await NxtMaster.load(force: true) }
+        catch { failures.append("NXT 종목: \(error.localizedDescription)") }
         if !failures.isEmpty { masterError = "갱신하지 못했습니다: " + failures.joined(separator: " / ") }
     }
 
@@ -368,12 +391,16 @@ final class AppModel: ObservableObject {
         guard !codes.isEmpty else { priceLoading = false; return }
         let group = activeGroup
         priceLoading = true
+        let nxtList = codes.filter { priceMarket(for: $0) == "NX" }
+        let krxList = codes.filter { priceMarket(for: $0) == "J" }
         priceTask = Task { [weak self] in
-            await client.prices(codes: codes, market: MarketClock.isNxtPremarket() ? "NX" : "J") { code, p in
-                Task { @MainActor in
-                    guard let self, self.activeGroup == group else { return }
-                    self.krxPrices[code] = p
-                    self.priceLoadedAt = Date()
+            for (list, market) in [(nxtList, "NX"), (krxList, "J")] where !list.isEmpty {
+                await client.prices(codes: list, market: market) { code, p in
+                    Task { @MainActor in
+                        guard let self, self.activeGroup == group else { return }
+                        self.krxPrices[code] = p
+                        self.priceLoadedAt = Date()
+                    }
                 }
             }
             await MainActor.run { [weak self] in
@@ -430,7 +457,7 @@ final class AppModel: ObservableObject {
     private func fetchSingle(_ code: String) {
         guard let client else { return }
         Task {
-            if let p = try? await client.price(code: code, market: MarketClock.isNxtPremarket() ? "NX" : "J") { krxPrices[code] = p }
+            if let p = try? await client.price(code: code, market: priceMarket(for: code)) { krxPrices[code] = p }
         }
     }
 
@@ -592,7 +619,9 @@ final class AppModel: ObservableObject {
         switch tab {
         case .watchlist:
             // 관심종목은 NXT 프리마켓(08:00~08:50)에만 NXT 체결을 받고, 그 밖에는 KRX 체결(애프터마켓 포함)을 받는다.
-            socket.subscribeTrades(currentCodes, krxOnly: !MarketClock.isNxtPremarket())
+            // 프리마켓에는 NXT 거래 종목만 구독한다.
+            let premarket = MarketClock.isNxtPremarket()
+            socket.subscribeTrades(premarket ? currentCodes.filter(tradesOffHours) : currentCodes, krxOnly: !premarket)
         case .order:
             if !orderCode.isEmpty {
                 socket.subscribeTrades([orderCode])
