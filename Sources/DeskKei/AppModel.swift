@@ -62,7 +62,13 @@ final class LiveMarket: ObservableObject {
     /// 선물/옵션 화면의 실시간 호가 (최대 10호가)
     @Published var futuresBook: OrderBook?
     /// 선물/옵션 즐겨찾기의 실시간 체결가 (단축코드별 마지막 체결)
-    @Published var futuresTrades: [String: RealTimeTrade] = [:]
+    @Published var futuresTrades: [String: FuturesTick] = [:]
+}
+
+/// 실시간 체결과 받은 시각. 구독하지 않던 사이 거래가 있었을 수 있어, 오래된 체결이 더 최근에 조회한 시세를 덮지 않게 한다.
+struct FuturesTick {
+    let trade: RealTimeTrade
+    let at: Date
 }
 
 @MainActor
@@ -495,7 +501,8 @@ final class AppModel: ObservableObject {
         futuresCode = ins.code
         futuresKind = ins.kind
         live.futuresBook = nil
-        if tab == .futures { applySubscription() }
+        // 호가 구독만 바꾼다. 전체를 해지했다 다시 걸면 즐겨찾기 체결 구독까지 매번 끊겼다 이어진다.
+        if tab == .futures { socket?.setFuturesBook(code: ins.code, kind: ins.kind) }
     }
 
     // MARK: - 실시간
@@ -561,7 +568,7 @@ final class AppModel: ObservableObject {
             }
         case .futures:
             // 거래 탭의 시세는 REST 로 주기적으로 조회하고, 호가만 실시간(최대 10호가)으로 받는다.
-            if !futuresCode.isEmpty { socket.subscribeFuturesBook(code: futuresCode, kind: futuresKind) }
+            socket.setFuturesBook(code: futuresCode.isEmpty ? nil : futuresCode, kind: futuresKind)
             // 즐겨찾기 종목의 체결가도 실시간으로 받는다.
             socket.setFuturesTrades(futuresRealtimeItems)
         case .assets:
@@ -594,7 +601,7 @@ final class AppModel: ObservableObject {
             if book.code == futuresCode, tab == .futures { live.futuresBook = book }
             else if book.code == orderCode { live.orderBook = book; orderBookIsLive = true }
         case .futuresTrade(let t):
-            live.futuresTrades[t.code] = t
+            live.futuresTrades[t.code] = FuturesTick(trade: t, at: Date())
         case .execution(let exec):
             toasts.append(exec)
             assetsVersion += 1

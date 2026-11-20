@@ -39,7 +39,7 @@ struct FuturesFavoritesView: View {
     @EnvironmentObject var model: AppModel
     /// 즐겨찾기 체결가는 초당 여러 번 바뀌므로 AppModel 과 분리된 LiveMarket 을 직접 구독한다.
     @ObservedObject var live: LiveMarket
-    @State private var quotes: [String: FuturesQuote] = [:]
+    @State private var quotes: [String: StampedQuote] = [:]
     @State private var editing = false
     @State private var notice: String?
 
@@ -136,31 +136,53 @@ struct FuturesFavoritesView: View {
         .padding(.vertical, 6)
     }
 
-    /// 화면에 보여 줄 가격. 소켓이 연결돼 있고 체결을 받은 종목은 실시간 값, 아니면 REST 로 조회한 값.
+    /// 화면에 보여 줄 가격: 실시간 체결과 REST 조회 중 더 최근에 받은 값.
+    /// 탭을 떠나 있던 사이 거래가 있었으면 남아 있는 체결이 오래됐을 수 있어, 받은 시각으로 비교한다.
     private func displayPrice(_ code: String) -> FavoritePrice? {
-        if model.wsConnected, let t = live.futuresTrades[code] {
+        let tick = model.wsConnected ? live.futuresTrades[code] : nil
+        let rest = quotes[code]
+        if let tick, tick.at >= (rest?.at ?? .distantPast) {
+            let t = tick.trade
             return FavoritePrice(price: t.price, change: t.change, sign: t.sign, rate: t.rate)
         }
-        return quotes[code].map {
-            FavoritePrice(price: $0.price.price, change: $0.price.change, sign: $0.price.sign, rate: $0.price.rate)
+        return rest.map {
+            FavoritePrice(price: $0.quote.price.price, change: $0.quote.price.change, sign: $0.quote.price.sign, rate: $0.quote.price.rate)
         }
     }
 
-    /// 시세를 REST 로 받는다. 초당 호출 제한을 넘지 않도록 사이를 띄우고, 실패한 종목은 이전 값을 둔다.
-    /// all 이 false 면 소켓으로 실시간 체결을 받고 있는 종목은 건너뛴다(소켓이 끊기면 다시 조회한다).
+    /// 시세를 REST 로 받는다. 5개씩 동시에 요청하고 묶음 사이를 띄워 초당 호출 제한(20건)을 넘지 않게 한다.
+    /// 실패한 종목은 이전 값을 두고 다음 바퀴에 다시 시도한다.
+    /// all 이 false 면 소켓으로 실시간 체결을 받고 있고 이미 값이 있는 종목은 건너뛴다(소켓이 끊기면 다시 조회한다).
     private func refresh(all: Bool) async {
         guard let client = model.client else { return }
         let streaming = Set(model.futuresRealtimeItems.map(\.code))
-        for item in items {
+        let targets = items.compactMap { item -> FuturesInstrument? in
+            if !all, model.wsConnected, streaming.contains(item.code), quotes[item.code] != nil { return nil }
+            return model.futures.byCode[item.code]
+        }
+        for start in stride(from: 0, to: targets.count, by: 5) {
             if Task.isCancelled { return }
-            if !all, model.wsConnected, streaming.contains(item.code), quotes[item.code] != nil { continue }
-            guard let ins = model.futures.byCode[item.code] else { continue }
-            if let q = (try? await client.futuresQuote(code: ins.code, kind: ins.kind)) ?? nil {
-                quotes[item.code] = q
+            let batch = Array(targets[start..<min(start + 5, targets.count)])
+            let results = await withTaskGroup(of: (String, FuturesQuote?).self) { group in
+                for ins in batch {
+                    group.addTask { (ins.code, (try? await client.futuresQuote(code: ins.code, kind: ins.kind)) ?? nil) }
+                }
+                var out: [(String, FuturesQuote?)] = []
+                for await r in group { out.append(r) }
+                return out
             }
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            let now = Date()
+            for (code, quote) in results {
+                if let quote { quotes[code] = StampedQuote(quote: quote, at: now) }
+            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
         }
     }
+}
+
+private struct StampedQuote {
+    let quote: FuturesQuote
+    let at: Date
 }
 
 private struct FavoritePrice {

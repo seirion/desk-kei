@@ -105,12 +105,19 @@ public final class KisWebSocket: NSObject {
         }
     }
 
-    /// 주식선물(H0ZFASP0)·주식옵션(H0ZOASP0) 실시간 호가. 최대 10호가가 온다.
-    public func subscribeFuturesBook(code: String, kind: FuturesKind) {
-        guard futuresBooks[code] == nil else { return }
-        let trId = kind.isOption ? "H0ZOASP0" : "H0ZFASP0"
-        futuresBooks[code] = trId
-        send(trId: trId, key: code, subscribe: true)
+    /// 주식선물(H0ZFASP0)·주식옵션(H0ZOASP0) 실시간 호가(최대 10호가)를 code 하나로 맞춘다. nil 이면 해지만 한다.
+    /// 다른 구독은 건드리지 않는다.
+    public func setFuturesBook(code: String?, kind: FuturesKind) {
+        var wanted: [String: String] = [:]
+        if let code { wanted[code] = kind.isOption ? "H0ZOASP0" : "H0ZFASP0" }
+        for (c, trId) in futuresBooks where wanted[c] != trId {
+            send(trId: trId, key: c, subscribe: false)
+            futuresBooks[c] = nil
+        }
+        for (c, trId) in wanted where futuresBooks[c] == nil {
+            futuresBooks[c] = trId
+            send(trId: trId, key: c, subscribe: true)
+        }
     }
 
     /// 주식선물(H0ZFCNT0)·주식옵션(H0ZOCNT0) 실시간 체결가. 주어진 목록에 맞춰 구독을 추가하고 빠진 것은 해지한다.
