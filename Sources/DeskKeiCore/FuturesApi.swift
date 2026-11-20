@@ -1,5 +1,15 @@
 import Foundation
 
+/// 등록한 계좌에 선물옵션 계좌가 있는지
+public enum FuturesAccountStatus: Equatable {
+    /// 아직 확인하지 못했거나 확인에 실패했다. 막지 않는다.
+    case unknown
+    /// 서버가 선물옵션 주문 조회에 응답했다
+    case available
+    /// 서버가 "계좌번호가 존재하지 않습니다"(APAC0071)로 답했거나 주문 계좌가 등록되지 않았다
+    case notFound
+}
+
 /// 주식선물옵션 REST API (국내선물옵션)
 extension KisClient {
     private static let quotePath = "/uapi/domestic-futureoption/v1/quotations"
@@ -47,6 +57,24 @@ extension KisClient {
             bids.append(OrderBookLevel(price: int(o["futs_bidp\(i)"]), qty: int(o["bidp_rsqn\(i)"])))
         }
         return OrderBook(code: code, asks: asks, bids: bids)
+    }
+
+    /// 선물옵션 계좌가 있는지 주문가능 조회(TTTO5105R)로 확인한다.
+    /// 서버는 종목·가격보다 계좌를 먼저 검사하므로 `code` 가 아무 값이어도 계좌가 없으면 APAC0071 을 돌려준다.
+    /// 그 오류일 때만 notFound 로 보고, 네트워크·토큰·장 상태 등 다른 실패는 unknown 으로 두어 주문을 막지 않는다.
+    public func futuresAccountStatus(code: String) async -> FuturesAccountStatus {
+        guard account.hasTradingAccount else { return .notFound }
+        let (cano, product) = account.futuresAccountParts
+        do {
+            let json = try await call(path: "\(Self.tradingPath)/inquire-psbl-order", trId: "TTTO5105R", query: [
+                "CANO": cano, "ACNT_PRDT_CD": product,
+                "PDNO": code, "SLL_BUY_DVSN_CD": "02", "UNIT_PRICE": "0", "ORD_DVSN_CD": "02",
+            ])
+            if str(json["msg_cd"]) == "APAC0071" { return .notFound }
+            return isOK(json) ? .available : .unknown
+        } catch {
+            return .unknown
+        }
     }
 
     /// 선물옵션 주문 (주간 TTTO1101U). 시장가는 가격 0 으로 보낸다.

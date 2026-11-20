@@ -86,6 +86,9 @@ final class AppModel: ObservableObject {
     /// 주식선물옵션 종목 (기초자산·월물·행사가 선택과 검색용)
     @Published private(set) var futures = FuturesCatalog(instruments: [])
     @Published private(set) var futuresUpdatedAt: Date?
+    /// 현재 계정에 선물옵션 계좌가 있는지. notFound 면 선물/옵션 주문을 막는다.
+    @Published private(set) var futuresAccount: FuturesAccountStatus = .unknown
+    private var futuresAccountChecking = false
     @Published private(set) var futuresFavorites: FuturesFavoritesFile
     @Published var futuresSubTab: FuturesSubTab = .trade
     /// 즐겨찾기에서 거래 탭으로 넘길 종목. 바뀔 때마다 token 이 증가한다.
@@ -216,8 +219,22 @@ final class AppModel: ObservableObject {
 
     /// 현재 계정으로 실시간 연결과 관심종목 시세 조회를 시작한다.
     private func startSession() async {
+        futuresAccount = .unknown
+        Task { await refreshFuturesAccount() }
         await startRealtime()
         loadGroupPrices()
+    }
+
+    /// 선물옵션 계좌 유무를 서버에 확인한다. 계정이 바뀌었으면 결과를 버린다.
+    func refreshFuturesAccount() async {
+        guard !futuresAccountChecking, let client else { return }
+        futuresAccountChecking = true
+        defer { futuresAccountChecking = false }
+        let name = activeName
+        let code = futures.instruments.first { $0.kind == .future }?.code ?? "A11612"
+        let status = await client.futuresAccountStatus(code: code)
+        guard name == activeName else { return }
+        futuresAccount = status
     }
 
     // MARK: - 계정
@@ -247,6 +264,8 @@ final class AppModel: ObservableObject {
             if activeName.isEmpty { activeName = name }
         }
         persistAccounts()
+        // 계좌번호를 고쳤을 수 있으므로 쓰고 있는 계정이면 다시 확인한다.
+        if saved.name == activeName { futuresAccount = .unknown; Task { await refreshFuturesAccount() } }
     }
 
     func deleteAccount(_ name: String) {
@@ -508,6 +527,8 @@ final class AppModel: ObservableObject {
 
     private func tabChanged() {
         saveState()
+        // 선물옵션 계좌를 아직 확인하지 못했거나 없다고 나왔으면, 탭에 들어올 때 다시 확인한다(그 사이 개설했을 수 있다).
+        if tab == .futures, futuresAccount != .available { Task { await refreshFuturesAccount() } }
         if tab == .watchlist { loadCharts() }
         // 탭을 옮길 때마다 재구독: 그 사이 시간대(정규장/NXT)가 바뀌었을 수 있다.
         applySubscription()

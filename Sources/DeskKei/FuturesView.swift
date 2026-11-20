@@ -80,10 +80,20 @@ struct FuturesView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if !canTrade {
+                Text("선물옵션 계좌가 확인되지 않아 매수/매도할 수 없습니다. 시세와 호가는 볼 수 있습니다.")
+                    .font(.callout)
+                    .foregroundStyle(Color.orange)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+            }
             HStack(spacing: 0) {
                 sideButton(.buy, "매수", .up)
                 sideButton(.sell, "매도", .down)
             }
+            .disabled(!canTrade)
+            .opacity(canTrade ? 1 : 0.5)
             search
             if let instrument {
                 contractPickers(instrument)
@@ -108,6 +118,9 @@ struct FuturesView: View {
             submitButton
         }
     }
+
+    /// 선물옵션 계좌가 없다고 확인되면 주문할 수 없다. 확인하지 못한 경우(unknown)는 막지 않는다.
+    private var canTrade: Bool { model.futuresAccount != .notFound }
 
     private func sideButton(_ s: OrderSide, _ label: String, _ tint: Color) -> some View {
         Button { side = s } label: {
@@ -324,7 +337,7 @@ struct FuturesView: View {
     private var submitButton: some View {
         let tint: Color = side == .buy ? .up : .down
         let title = submitting ? "처리 중…" : (side == .buy ? "매수 주문" : "매도 주문")
-        let disabled = submitting || instrument == nil
+        let disabled = submitting || instrument == nil || !canTrade
         return Button { askConfirm() } label: {
             Text(title).fontWeight(.bold).frame(maxWidth: .infinity).padding(.vertical, 10)
                 .foregroundStyle(.white)
@@ -457,6 +470,7 @@ struct FuturesView: View {
     }
 
     private func askConfirm() {
+        guard canTrade else { return }
         errorMessage = nil
         resultMessage = nil
         guard let ins = instrument else { errorMessage = "종목을 선택해주세요."; return }
