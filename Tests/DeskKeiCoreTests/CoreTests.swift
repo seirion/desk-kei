@@ -517,3 +517,35 @@ import CommonCrypto
         #expect(!KisError("x").isTokenError)
     }
 }
+
+@Suite struct FuturesFavoritesTests {
+    @Test func toggleAddsAtEndAndRemoves() {
+        var f = FuturesFavoritesFile()
+        #expect(f.toggle(code: "A11612", name: "삼성전자 선물 26.12"))
+        #expect(f.toggle(code: "B11612095", name: "삼성전자 콜 26.12 230,000"))
+        #expect(f.items.map(\.code) == ["A11612", "B11612095"])
+        #expect(f.contains("A11612"))
+        #expect(!f.toggle(code: "A11612", name: "삼성전자 선물 26.12"))
+        #expect(f.items.map(\.code) == ["B11612095"])
+        #expect(!f.contains("A11612"))
+    }
+
+    @Test func reorderKeepsNamesAndDropsMissing() {
+        var f = FuturesFavoritesFile()
+        f.toggle(code: "A", name: "a")
+        f.toggle(code: "B", name: "b")
+        f.toggle(code: "C", name: "c")
+        f.reorder(["C", "A", "X"])
+        #expect(f.items.map(\.code) == ["C", "A"])
+        #expect(f.items.map(\.name) == ["c", "a"])
+    }
+
+    @Test func roundTripsThroughJSON() throws {
+        var f = FuturesFavoritesFile()
+        f.toggle(code: "A", name: "a")
+        let data = try JSONEncoder().encode(f)
+        #expect(try JSONDecoder().decode(FuturesFavoritesFile.self, from: data) == f)
+        // 필드가 없는 빈 파일도 읽혀야 한다
+        #expect(try JSONDecoder().decode(FuturesFavoritesFile.self, from: Data("{\"items\":[]}".utf8)).items.isEmpty)
+    }
+}

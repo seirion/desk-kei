@@ -46,13 +46,16 @@ struct FuturesView: View {
         }
         .onAppear(perform: restoreIfNeeded)
         .onChange(of: model.futures.instruments.count) { _ in restoreIfNeeded() }
+        .onChange(of: model.futuresRequestToken) { _ in
+            if let code = model.futuresRequestCode { pick(code: code) }
+        }
         .onReceive(model.live.$futuresBook.compactMap { $0 }) { live in
             guard live.code == instrument?.code else { return }
             book = live.trimmingEmptyDeepLevels()
             liveBookReceived = true
         }
-        .task(id: PollKey(active: model.tab == .futures, code: instrument?.code ?? "")) {
-            guard model.tab == .futures, instrument != nil else { return }
+        .task(id: PollKey(active: model.tab == .futures && model.futuresSubTab == .trade, code: instrument?.code ?? "")) {
+            guard model.tab == .futures, model.futuresSubTab == .trade, instrument != nil else { return }
             // 탭에 다시 들어오면 호가를 새로 구독하므로, 실시간 호가가 올 때까지 REST 로 채운다.
             liveBookReceived = false
             while !Task.isCancelled {
@@ -163,11 +166,22 @@ struct FuturesView: View {
         }
     }
 
+    private func favoriteButton(_ ins: FuturesInstrument) -> some View {
+        let isFavorite = model.isFuturesFavorite(ins.code)
+        return Button { model.toggleFuturesFavorite(code: ins.code, name: ins.title) } label: {
+            Image(systemName: isFavorite ? "star.fill" : "star")
+                .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isFavorite ? "즐겨찾기에서 제거" : "즐겨찾기에 추가")
+    }
+
     private func header(_ ins: FuturesInstrument) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(ins.title).font(.title3).fontWeight(.bold)
                 Text(ins.code).font(.caption).foregroundStyle(.secondary)
+                favoriteButton(ins)
                 Spacer()
                 if let p = quote?.price {
                     let c = formatChange(change: p.change, sign: p.sign, rate: nil)

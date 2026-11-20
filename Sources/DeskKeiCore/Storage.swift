@@ -104,6 +104,31 @@ public struct FuturesPrefsFile: Codable {
     }
 }
 
+/// 선물/옵션 즐겨찾기 (순서 유지). 코드는 선물옵션 단축코드, 이름은 담을 때의 종목 표시명.
+public struct FuturesFavoritesFile: Codable, Equatable {
+    public var items: [RecentStock] = []
+    public init() {}
+
+    public func contains(_ code: String) -> Bool { items.contains { $0.code == code } }
+
+    /// 있으면 빼고 없으면 맨 뒤에 담는다. 담았으면 true.
+    @discardableResult
+    public mutating func toggle(code: String, name: String) -> Bool {
+        if let idx = items.firstIndex(where: { $0.code == code }) {
+            items.remove(at: idx)
+            return false
+        }
+        items.append(RecentStock(code: code, name: name))
+        return true
+    }
+
+    /// 주어진 코드 순서로 바꾼다. 목록에 없는 코드는 무시하고, 빠진 항목은 지운 것으로 본다.
+    public mutating func reorder(_ codes: [String]) {
+        let byCode = Dictionary(items.map { ($0.code, $0) }, uniquingKeysWith: { a, _ in a })
+        items = codes.compactMap { byCode[$0] }
+    }
+}
+
 /// 차트 설정. indicators 가 nil 이면 저장된 적이 없는 것으로 보고 기본 지표(MA, VOL)를 쓴다.
 public struct ChartPrefsFile: Codable, Equatable {
     public var indicators: [String]?

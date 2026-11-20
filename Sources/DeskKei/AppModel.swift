@@ -24,6 +24,18 @@ enum AppTab: String, CaseIterable, Identifiable {
     }
 }
 
+/// 선물/옵션 화면 안의 탭
+enum FuturesSubTab: String, CaseIterable, Identifiable {
+    case trade, favorites
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .trade: return "거래"
+        case .favorites: return "즐겨찾기"
+        }
+    }
+}
+
 enum AppearanceMode: String, CaseIterable, Identifiable {
     case system, light, dark
     var id: String { rawValue }
@@ -72,6 +84,11 @@ final class AppModel: ObservableObject {
     /// 주식선물옵션 종목 (기초자산·월물·행사가 선택과 검색용)
     @Published private(set) var futures = FuturesCatalog(instruments: [])
     @Published private(set) var futuresUpdatedAt: Date?
+    @Published private(set) var futuresFavorites: FuturesFavoritesFile
+    @Published var futuresSubTab: FuturesSubTab = .trade
+    /// 즐겨찾기에서 거래 탭으로 넘길 종목. 바뀔 때마다 token 이 증가한다.
+    @Published private(set) var futuresRequestCode: String?
+    @Published private(set) var futuresRequestToken = 0
     @Published private(set) var watchlist: WatchlistFile
     @Published var activeGroup: Int { didSet { groupChanged(from: oldValue) } }
     @Published var confirmOrders: Bool { didSet { saveState() } }
@@ -107,6 +124,7 @@ final class AppModel: ObservableObject {
     private let watchStore = JSONStore("watchlist.json")
     private let stateStore = JSONStore("state.json")
     private let prefsStore = JSONStore("order.json")
+    private let futuresFavoritesStore = JSONStore("futures_favorites.json")
 
     private var socket: KisWebSocket?
     private var priceTask: Task<Void, Never>?
@@ -133,6 +151,7 @@ final class AppModel: ObservableObject {
         confirmOrders = state.confirmOrders
 
         orderCode = (prefsStore.load(OrderPrefsFile.self) ?? OrderPrefsFile()).last.code
+        futuresFavorites = futuresFavoritesStore.load(FuturesFavoritesFile.self) ?? FuturesFavoritesFile()
     }
 
     func openSettings(_ tab: SettingsTab? = nil) {
@@ -397,6 +416,26 @@ final class AppModel: ObservableObject {
     /// REST 로 받아온 초기 호가. 재구독 이후 실시간 호가가 아직 오지 않았을 때만 반영한다.
     func setInitialOrderBook(_ book: OrderBook) {
         if !orderBookIsLive, book.code == orderCode { live.orderBook = book }
+    }
+
+    /// 선물/옵션 즐겨찾기에서 종목을 눌렀을 때: 거래 탭으로 옮겨 그 종목을 연다.
+    func goToFutures(code: String) {
+        futuresRequestCode = code
+        futuresRequestToken += 1
+        futuresSubTab = .trade
+        tab = .futures
+    }
+
+    func isFuturesFavorite(_ code: String) -> Bool { futuresFavorites.contains(code) }
+
+    func toggleFuturesFavorite(code: String, name: String) {
+        futuresFavorites.toggle(code: code, name: name)
+        futuresFavoritesStore.save(futuresFavorites)
+    }
+
+    func setFuturesFavoriteOrder(_ codes: [String]) {
+        futuresFavorites.reorder(codes)
+        futuresFavoritesStore.save(futuresFavorites)
     }
 
     /// 선물/옵션 화면에서 종목이 바뀌었을 때

@@ -16,7 +16,7 @@ struct ContentView: View {
                     page(.assets) { AssetsView() }
                     page(.watchlist) { WatchlistView() }
                     page(.order) { OrderView() }
-                    page(.futures) { FuturesView() }
+                    page(.futures) { FuturesRootView() }
                 }
             }
             ToastStack()
