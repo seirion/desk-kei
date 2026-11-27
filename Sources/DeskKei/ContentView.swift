@@ -42,7 +42,7 @@ struct ContentView: View {
                     .help("설정 (⌘,)")
             }
         }
-        .navigationTitle(model.account.name.isEmpty ? "Desk Kei" : "Desk Kei · \(model.account.name)")
+        .navigationTitle(model.account.name.isEmpty ? "Desk Kei" : "\(model.account.broker.displayName) · \(model.account.name)")
         .sheet(isPresented: $model.showSearch) { SearchSheet() }
         .sheet(isPresented: $model.showSettings) { SettingsSheet() }
     }
