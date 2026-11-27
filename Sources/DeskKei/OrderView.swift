@@ -60,7 +60,7 @@ struct OrderView: View {
                 }
                 // 차트는 처음 열 때 만들고, 이후에는 숨겨 두어 상태를 유지한다.
                 if chartVisited {
-                    ChartView(live: model.live, client: { model.client }, code: code, name: name, currentPrice: currentPrice, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
+                    ChartView(live: model.live, client: { model.marketClient }, code: code, name: name, currentPrice: currentPrice, recent: prefs.recent, onRemoveRecent: removeRecent) { code, name in
                         Task { await select(code: code, name: name) }
                     }
                         .opacity(subTab == .chart ? 1 : 0)
@@ -136,6 +136,14 @@ struct OrderView: View {
             quickRow
             if orderType == .limit, totalAmount > 0 {
                 emphasized("총 주문금액: ", fmt(totalAmount), "원").frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            if !canOrder {
+                Text("\(model.account.broker.displayName) 주문은 아직 지원하지 않습니다. 시세와 호가는 \(model.marketAccount?.name ?? "한국투자증권") 계정으로 볼 수 있습니다.")
+                    .font(.callout)
+                    .foregroundStyle(Color.orange)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             }
             if let resultMessage { banner(resultMessage, color: .green) { self.resultMessage = nil } }
             if let errorMessage { banner(errorMessage, color: .up) { self.errorMessage = nil } }
@@ -320,8 +328,8 @@ struct OrderView: View {
                 .background(tint, in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .disabled(submitting || code.isEmpty)
-        .opacity(submitting || code.isEmpty ? 0.5 : 1)
+        .disabled(submitting || code.isEmpty || !canOrder)
+        .opacity(submitting || code.isEmpty || !canOrder ? 0.5 : 1)
     }
 
     // MARK: 로직
@@ -360,7 +368,7 @@ struct OrderView: View {
         errorMessage = nil
         model.orderStockChanged(code: newCode)
 
-        guard let client = model.client else { return }
+        guard let client = model.marketClient else { return }
         priceLoading = true
         defer { priceLoading = false }
         async let price = try? client.price(code: newCode)
@@ -378,7 +386,8 @@ struct OrderView: View {
     }
 
     private func loadHoldings() async {
-        guard let client = model.client, model.account.hasTradingAccount else { return }
+        // 보유 종목은 사용 중인 증권사 계좌에서 가져온다(KIS 는 계좌번호가 있어야 함).
+        guard let client = model.brokerClient, model.account.broker != .kis || model.account.hasTradingAccount else { return }
         if let r = try? await client.balance() { holdings = r.assets }
     }
 
@@ -398,7 +407,11 @@ struct OrderView: View {
         if let holdingQty { inputQty = String(holdingQty) }
     }
 
+    /// 주문을 낼 수 있는 계정인지. KIS 가 아닌 증권사는 아직 주문을 지원하지 않는다.
+    private var canOrder: Bool { model.account.broker.supportsTrading }
+
     private func askConfirm() {
+        guard canOrder else { return }
         errorMessage = nil
         resultMessage = nil
         guard !code.isEmpty else { errorMessage = "종목을 선택해주세요."; return }

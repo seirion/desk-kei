@@ -59,6 +59,7 @@ struct AccountsPane: View {
                     }
                 }
             }
+            marketAccountRow
             Divider()
             HStack {
                 Text("계정을 클릭하면 해당 계정으로 전환됩니다.").font(.caption).foregroundStyle(.secondary)
@@ -67,6 +68,30 @@ struct AccountsPane: View {
                 Button("+ 계정 추가") { open(nil) }.keyboardShortcut(.defaultAction)
             }
             .padding(12)
+        }
+    }
+
+    /// 사용 중인 계정이 KIS 가 아니면 시세를 받을 KIS 계정을 알려 주고, 둘 이상이면 고르게 한다.
+    @ViewBuilder private var marketAccountRow: some View {
+        if model.needsMarketAccount {
+            Text("시세·호가를 보려면 한국투자증권 계정을 등록해 주세요. \(model.account.broker.displayName) 계정은 시세를 받지 못합니다.")
+                .font(.caption).foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.bottom, 8)
+        } else if model.usesSeparateMarketAccount, let market = model.marketAccount {
+            HStack {
+                Text("시세 계정").font(.caption).foregroundStyle(.secondary)
+                if model.kisAccounts.count > 1 {
+                    Picker("", selection: Binding(get: { market.name }, set: { model.setMarketAccount($0) })) {
+                        ForEach(model.kisAccounts) { Text($0.name).tag($0.name) }
+                    }
+                    .labelsHidden().frame(width: 160)
+                } else {
+                    Text(market.name).font(.caption)
+                }
+                Text("시세·호가·차트는 이 한국투자증권 계정의 키로 받습니다.").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.bottom, 8)
         }
     }
 

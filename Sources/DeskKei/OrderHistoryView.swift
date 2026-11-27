@@ -134,7 +134,8 @@ struct OrderHistoryView: View {
     private func load() async {
         guard let client = model.client else {
             items = []
-            error = model.account.hasCredentials ? nil : "등록된 계정이 없습니다."
+            error = !model.account.hasCredentials ? "등록된 계정이 없습니다."
+                : model.account.broker.supportsTrading ? nil : "\(model.account.broker.displayName) 주문 내역은 아직 지원하지 않습니다."
             return
         }
         loading = true

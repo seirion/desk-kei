@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
     // 계정
     @Published private(set) var accounts: [BrokerAccount]
     @Published private(set) var activeName: String
+    /// 시세에 쓸 KIS 계정으로 고른 이름 (비어 있으면 자동)
+    @Published private(set) var marketAccountName: String
 
     // 종목 / 관심종목
     @Published private(set) var stocks: [String: StockInfo] = [:]
@@ -157,6 +159,7 @@ final class AppModel: ObservableObject {
         let file = accountsStore.load(AccountsFile.self) ?? AccountsFile()
         accounts = file.accounts
         activeName = file.active
+        marketAccountName = file.marketAccount
 
         var watch = watchStore.load(WatchlistFile.self) ?? WatchlistFile()
         watch.normalize()
@@ -287,16 +290,41 @@ final class AppModel: ObservableObject {
         accounts.first { $0.name == activeName } ?? accounts.first ?? BrokerAccount()
     }
 
-    /// 시세·주문·선물옵션에 쓰는 KIS 클라이언트. 다른 증권사 계정이면 nil 이라 그 기능들은 동작하지 않는다.
+    /// 주문·계좌에 쓰는 KIS 클라이언트. 사용 중인 계정이 KIS 가 아니면 nil 이라 KIS 주문 기능은 동작하지 않는다.
     var client: KisClient? {
         account.broker == .kis && account.hasCredentials ? KisClient(account: account) : nil
     }
 
+    /// 인증 정보가 있는 KIS 계정들
+    var kisAccounts: [BrokerAccount] { accounts.filter { $0.broker == .kis && $0.hasCredentials } }
+
+    /// 시세·호가·차트·실시간에 쓰는 KIS 계정. 사용 중인 계정이 KIS 면 그 계정이고,
+    /// 아니면 설정에서 고른 KIS 계정, 없으면 첫 KIS 계정이다. KIS 계정이 없으면 nil.
+    var marketAccount: BrokerAccount? {
+        if account.broker == .kis, account.hasCredentials { return account }
+        return kisAccounts.first { $0.name == marketAccountName } ?? kisAccounts.first
+    }
+
+    /// 시세 조회용 KIS 클라이언트
+    var marketClient: KisClient? { marketAccount.map { KisClient(account: $0) } }
+
+    /// 인증 정보는 있는데 시세를 받을 KIS 계정이 없는 상태 (KIS 가 아닌 계정만 등록한 경우)
+    var needsMarketAccount: Bool { account.hasCredentials && marketAccount == nil }
+
+    /// 사용 중인 계정이 KIS 가 아니라서 시세를 다른 KIS 계정으로 받고 있는지
+    var usesSeparateMarketAccount: Bool { account.hasCredentials && account.broker != .kis && marketAccount != nil }
+
+    /// 시세 계정을 고른다. 시세·실시간을 새 계정으로 다시 연결한다.
+    func setMarketAccount(_ name: String) {
+        guard name != marketAccountName else { return }
+        marketAccountName = name
+        persistAccounts()
+        krxPrices = [:]
+        Task { await startSession() }
+    }
+
     /// 증권사와 관계없이 자산 조회에 쓰는 클라이언트
     var brokerClient: BrokerClient? { BrokerClients.make(account) }
-
-    /// 인증 정보는 있지만 시세·주문을 지원하지 않는 증권사 계정인지
-    var isMarketUnsupported: Bool { account.hasCredentials && !account.broker.supportsTrading }
 
     /// 입력한 계정으로 인증(토큰 발급)이 되는지 확인한다. 저장된 토큰이 아니라 입력값으로 새로 확인한다.
     func verifyAccount(_ acc: BrokerAccount) async throws {
@@ -345,6 +373,7 @@ final class AppModel: ObservableObject {
         var file = AccountsFile()
         file.accounts = accounts
         file.active = activeName
+        file.marketAccount = marketAccountName
         accountsStore.save(file)
     }
 
@@ -403,7 +432,7 @@ final class AppModel: ObservableObject {
 
     func loadGroupPrices() {
         priceTask?.cancel()
-        guard let client else { return }
+        guard let client = marketClient else { return }
         let codes = currentCodes
         guard !codes.isEmpty else { priceLoading = false; return }
         let group = activeGroup
@@ -431,7 +460,7 @@ final class AppModel: ObservableObject {
     /// 현재 그룹 종목의 1일 분봉 차트를 받는다. 최근 5분 안에 받은 종목은 건너뛴다.
     private func loadCharts() {
         chartTask?.cancel()
-        guard let client else { return }
+        guard let client = marketClient else { return }
         let today = MarketClock.todayString()
         if chartDay != today {
             chartDay = today
@@ -472,7 +501,7 @@ final class AppModel: ObservableObject {
     }
 
     private func fetchSingle(_ code: String) {
-        guard let client else { return }
+        guard let client = marketClient else { return }
         Task {
             if let p = try? await client.price(code: code, market: priceMarket(for: code)) { krxPrices[code] = p }
         }
@@ -566,10 +595,11 @@ final class AppModel: ObservableObject {
         socket?.disconnect()
         socket = nil
         wsConnected = false
-        guard let client else { return }
+        guard let client = marketClient else { return }
         do {
             let key = try await client.approvalKey()
-            let ws = KisWebSocket(approvalKey: key, customerId: account.userId)
+            // 체결 통보(주문 계정의 HTS ID)는 시세 계정이 사용 중인 계정과 같을 때만 받는다.
+            let ws = KisWebSocket(approvalKey: key, customerId: account.broker == .kis ? account.userId : "")
             ws.onEvent = { [weak self] in self?.handle($0) }
             ws.onStatusChange = { [weak self] in self?.wsConnected = $0 }
             ws.onConnected = { [weak self] in self?.applySubscription() }
@@ -657,7 +687,7 @@ final class AppModel: ObservableObject {
 
     /// 재구독하면 호가가 비워지는데 실시간 호가는 변동이 있어야 오므로, 그 사이를 REST 호가로 채운다.
     private func loadInitialOrderBook() {
-        guard let client else { return }
+        guard let client = marketClient else { return }
         let code = orderCode
         Task {
             if let book = try? await client.askingPrice(code: code) { setInitialOrderBook(book) }

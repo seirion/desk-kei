@@ -11,6 +11,16 @@ import CommonCrypto
         #expect(file.accounts[0].password.isEmpty)
     }
 
+    @Test func oldAccountsFileHasNoMarketAccount() throws {
+        let json = #"{"accounts":[],"active":"a"}"#
+        let file = try JSONDecoder().decode(AccountsFile.self, from: Data(json.utf8))
+        #expect(file.marketAccount.isEmpty)
+        let saved = try JSONDecoder().decode(AccountsFile.self, from: JSONEncoder().encode({
+            var f = AccountsFile(); f.marketAccount = "한투"; return f
+        }()))
+        #expect(saved.marketAccount == "한투")
+    }
+
     @Test func requiredFieldsFollowTheBroker() {
         #expect(BrokerAccount(broker: .kb, appKey: "a", appSecret: "b").missingFieldMessage == nil)
         #expect(BrokerAccount(broker: .kis, appKey: "a", appSecret: "b").missingFieldMessage == nil)

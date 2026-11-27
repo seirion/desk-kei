@@ -39,7 +39,16 @@ public final class JSONStore {
 public struct AccountsFile: Codable {
     public var accounts: [BrokerAccount] = []
     public var active: String = ""
+    /// 시세를 받는 데 쓸 KIS 계정 이름. 사용 중인 계정이 KIS 가 아닐 때만 쓰며, 비어 있으면 첫 KIS 계정을 쓴다.
+    public var marketAccount: String = ""
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        accounts = try c.decodeIfPresent([BrokerAccount].self, forKey: .accounts) ?? []
+        active = try c.decodeIfPresent(String.self, forKey: .active) ?? ""
+        marketAccount = try c.decodeIfPresent(String.self, forKey: .marketAccount) ?? ""
+    }
 }
 
 /// 관심종목 10개 그룹 + 그룹 이름

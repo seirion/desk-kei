@@ -154,7 +154,7 @@ struct FuturesFavoritesView: View {
     /// 실패한 종목은 이전 값을 두고 다음 바퀴에 다시 시도한다.
     /// all 이 false 면 소켓으로 실시간 체결을 받고 있고 이미 값이 있는 종목은 건너뛴다(소켓이 끊기면 다시 조회한다).
     private func refresh(all: Bool) async {
-        guard let client = model.client else { return }
+        guard let client = model.marketClient else { return }
         let streaming = Set(model.futuresRealtimeItems.map(\.code))
         let targets = items.compactMap { item -> FuturesInstrument? in
             if !all, model.wsConnected, streaming.contains(item.code), quotes[item.code] != nil { return nil }

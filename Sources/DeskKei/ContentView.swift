@@ -52,7 +52,7 @@ struct ContentView: View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .overlay {
-                if marketOnly, model.isMarketUnsupported { UnsupportedBrokerNotice(broker: model.account.broker) }
+                if marketOnly, model.needsMarketAccount { NeedsMarketAccountNotice(broker: model.account.broker) }
             }
             .opacity(model.tab == tab ? 1 : 0)
             .allowsHitTesting(model.tab == tab)
@@ -60,16 +60,19 @@ struct ContentView: View {
     }
 }
 
-/// 시세·주문을 지원하지 않는 증권사 계정으로 들어왔을 때 시세·주문 화면 위에 보여 주는 안내
-struct UnsupportedBrokerNotice: View {
+/// 시세를 받을 KIS 계정이 없을 때 시세·주문 화면 위에 보여 주는 안내.
+/// 키움·KB 계정은 시세를 직접 받지 못하고 KIS 계정의 키로 받는다.
+struct NeedsMarketAccountNotice: View {
+    @EnvironmentObject var model: AppModel
     let broker: Broker
 
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "chart.line.uptrend.xyaxis").font(.largeTitle).foregroundStyle(.secondary)
-            Text("\(broker.displayName) 계정은 지금 자산 조회만 지원합니다.").font(.headline)
-            Text("시세·주문·선물옵션은 한국투자증권 계정으로 전환해서 사용해 주세요.")
+            Text("시세·호가를 보려면 한국투자증권 계정이 필요합니다.").font(.headline)
+            Text("\(broker.displayName) 계정은 시세를 한국투자증권 계정의 키로 받아서 보여 줍니다.")
                 .font(.callout).foregroundStyle(.secondary)
+            Button("계정 설정 열기") { model.openSettings(.accounts) }.padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
