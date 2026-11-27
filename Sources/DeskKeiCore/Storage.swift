@@ -10,6 +10,8 @@ public final class JSONStore {
 
     private let url: URL
 
+    public var filename: String { url.lastPathComponent }
+
     public init(_ filename: String, directory: URL = JSONStore.directory) {
         self.url = directory.appendingPathComponent(filename)
     }
@@ -35,7 +37,7 @@ public final class JSONStore {
 
 /// 계정 목록 + 현재 사용 중인 계정
 public struct AccountsFile: Codable {
-    public var accounts: [KisAccount] = []
+    public var accounts: [BrokerAccount] = []
     public var active: String = ""
     public init() {}
 }

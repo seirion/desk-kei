@@ -1,25 +1,83 @@
 import Foundation
 
-/// KIS 계정 설정. 계정 이름이 식별자다.
-public struct KisAccount: Codable, Equatable, Identifiable, Hashable {
+/// 지원하는 증권사
+public enum Broker: String, Codable, CaseIterable, Identifiable, Hashable {
+    case kis, kiwoom, kb
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .kis: return "한국투자증권"
+        case .kiwoom: return "키움증권"
+        case .kb: return "KB증권"
+        }
+    }
+
+    /// 계정 입력 화면의 App Secret 칸 이름
+    public var secretLabel: String { self == .kiwoom ? "Secret Key" : "App Secret" }
+
+    /// 계좌번호가 꼭 있어야 하는지. KIS 는 조회만 할 때 없어도 되고, KB 는 앱키에 계좌가 묶여 있어 번호를 쓰지 않는다.
+    public var requiresAccountNo: Bool { self == .kiwoom }
+
+    /// 계좌 비밀번호가 필요한 증권사 (키움 잔고 조회 요청에 들어간다)
+    public var requiresPassword: Bool { self == .kiwoom }
+
+    /// KIS 체결통보(웹소켓)에 쓰는 HTS 사용자 ID 를 받는지
+    public var usesUserId: Bool { self == .kis }
+
+    /// 시세·주문·선물옵션까지 지원하는지. 그 밖의 증권사는 지금은 자산 조회만 된다.
+    public var supportsTrading: Bool { self == .kis }
+
+    /// 계정 입력 화면에 보여 줄 안내: 입력값이 전송되는 곳
+    public var apiHostNote: String { "\(displayName) API" }
+}
+
+/// 증권사 계정 설정. 계정 이름이 식별자다. 예전 파일에는 증권사가 없으므로 없으면 KIS 로 읽는다.
+public struct BrokerAccount: Codable, Equatable, Identifiable, Hashable {
+    public var broker: Broker
     public var name: String
     public var accountNo: String
     public var userId: String
     public var appKey: String
     public var appSecret: String
+    /// 계좌 비밀번호 (키움)
+    public var password: String
 
     public var id: String { name }
 
-    public init(name: String = "", accountNo: String = "", userId: String = "", appKey: String = "", appSecret: String = "") {
+    public init(broker: Broker = .kis, name: String = "", accountNo: String = "", userId: String = "",
+                appKey: String = "", appSecret: String = "", password: String = "") {
+        self.broker = broker
         self.name = name
         self.accountNo = accountNo
         self.userId = userId
         self.appKey = appKey
         self.appSecret = appSecret
+        self.password = password
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        broker = try c.decodeIfPresent(Broker.self, forKey: .broker) ?? .kis
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        accountNo = try c.decodeIfPresent(String.self, forKey: .accountNo) ?? ""
+        userId = try c.decodeIfPresent(String.self, forKey: .userId) ?? ""
+        appKey = try c.decodeIfPresent(String.self, forKey: .appKey) ?? ""
+        appSecret = try c.decodeIfPresent(String.self, forKey: .appSecret) ?? ""
+        password = try c.decodeIfPresent(String.self, forKey: .password) ?? ""
     }
 
     public var hasCredentials: Bool { !appKey.isEmpty && !appSecret.isEmpty }
     public var hasTradingAccount: Bool { hasCredentials && !accountNo.isEmpty }
+
+    /// 입력이 증권사가 요구하는 항목을 다 채웠는지. 모자라면 사용자에게 보여 줄 안내를 돌려준다.
+    public var missingFieldMessage: String? {
+        if !hasCredentials { return "App Key와 \(broker.secretLabel)을 입력해 주세요." }
+        if broker.requiresAccountNo, accountNo.trimmingCharacters(in: .whitespaces).isEmpty { return "계좌번호를 입력해 주세요." }
+        if broker.requiresPassword, password.isEmpty { return "계좌 비밀번호를 입력해 주세요." }
+        return nil
+    }
 
     /// 선물옵션 주문·조회에 쓰는 (종합계좌 8자리, 상품코드). 선물옵션 계좌는 같은 종합계좌의 상품코드 03 이므로
     /// 주식 계좌(01)이거나 비어 있으면 03 으로 바꾼다. 다른 상품코드(03 등)를 직접 등록했다면 그대로 쓴다.

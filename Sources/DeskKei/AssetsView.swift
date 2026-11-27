@@ -67,7 +67,7 @@ struct AssetsView: View {
     }
 
     private func load() async {
-        guard let client = model.client else {
+        guard let client = model.brokerClient else {
             summary = nil
             assets = []
             error = model.account.hasCredentials ? nil : "등록된 계정이 없습니다. 우측 상단 계정 버튼에서 추가해 주세요."

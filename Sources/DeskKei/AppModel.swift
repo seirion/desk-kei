@@ -81,7 +81,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
 
     // 계정
-    @Published private(set) var accounts: [KisAccount]
+    @Published private(set) var accounts: [BrokerAccount]
     @Published private(set) var activeName: String
 
     // 종목 / 관심종목
@@ -260,18 +260,35 @@ final class AppModel: ObservableObject {
 
     // MARK: - 계정
 
-    var account: KisAccount {
-        accounts.first { $0.name == activeName } ?? accounts.first ?? KisAccount()
+    var account: BrokerAccount {
+        accounts.first { $0.name == activeName } ?? accounts.first ?? BrokerAccount()
     }
 
+    /// 시세·주문·선물옵션에 쓰는 KIS 클라이언트. 다른 증권사 계정이면 nil 이라 그 기능들은 동작하지 않는다.
     var client: KisClient? {
-        account.hasCredentials ? KisClient(account: account) : nil
+        account.broker == .kis && account.hasCredentials ? KisClient(account: account) : nil
     }
 
-    func saveAccount(_ acc: KisAccount, replacing original: String?) throws {
+    /// 증권사와 관계없이 자산 조회에 쓰는 클라이언트
+    var brokerClient: BrokerClient? { BrokerClients.make(account) }
+
+    /// 인증 정보는 있지만 시세·주문을 지원하지 않는 증권사 계정인지
+    var isMarketUnsupported: Bool { account.hasCredentials && !account.broker.supportsTrading }
+
+    /// 입력한 계정으로 인증(토큰 발급)이 되는지 확인한다. 저장된 토큰이 아니라 입력값으로 새로 확인한다.
+    func verifyAccount(_ acc: BrokerAccount) async throws {
+        if let message = acc.missingFieldMessage { throw KisError(message) }
+        // 토큰 캐시를 거치지 않도록 일회용 저장소를 쓴다.
+        let scratch = JSONStore("tokens_verify_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: JSONStore.directory.appendingPathComponent(scratch.filename)) }
+        guard let client = BrokerClients.make(acc, tokenStore: scratch) else { throw KisError.notConfigured }
+        try await client.verify()
+    }
+
+    func saveAccount(_ acc: BrokerAccount, replacing original: String?) throws {
         let name = acc.name.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { throw KisError("계정 이름을 입력해 주세요.") }
-        guard acc.hasCredentials else { throw KisError("App Key와 App Secret을 입력해 주세요.") }
+        if let message = acc.missingFieldMessage { throw KisError(message) }
         if accounts.contains(where: { $0.name == name && $0.name != original }) {
             throw KisError("이미 같은 이름의 계정이 있습니다.")
         }

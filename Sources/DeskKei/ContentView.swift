@@ -14,9 +14,9 @@ struct ContentView: View {
                 // 모든 화면을 살려 두어 탭을 오가도 입력과 스크롤 상태가 유지된다.
                 ZStack {
                     page(.assets) { AssetsView() }
-                    page(.watchlist) { WatchlistView() }
-                    page(.order) { OrderView() }
-                    page(.futures) { FuturesRootView() }
+                    page(.watchlist, marketOnly: true) { WatchlistView() }
+                    page(.order, marketOnly: true) { OrderView() }
+                    page(.futures, marketOnly: true) { FuturesRootView() }
                 }
             }
             ToastStack()
@@ -47,12 +47,32 @@ struct ContentView: View {
         .sheet(isPresented: $model.showSettings) { SettingsSheet() }
     }
 
-    private func page<V: View>(_ tab: AppTab, @ViewBuilder content: () -> V) -> some View {
+    /// marketOnly: 시세·주문 화면. KIS 가 아닌 증권사 계정이면 안내로 덮는다.
+    private func page<V: View>(_ tab: AppTab, marketOnly: Bool = false, @ViewBuilder content: () -> V) -> some View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay {
+                if marketOnly, model.isMarketUnsupported { UnsupportedBrokerNotice(broker: model.account.broker) }
+            }
             .opacity(model.tab == tab ? 1 : 0)
             .allowsHitTesting(model.tab == tab)
             .accessibilityHidden(model.tab != tab)
+    }
+}
+
+/// 시세·주문을 지원하지 않는 증권사 계정으로 들어왔을 때 시세·주문 화면 위에 보여 주는 안내
+struct UnsupportedBrokerNotice: View {
+    let broker: Broker
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "chart.line.uptrend.xyaxis").font(.largeTitle).foregroundStyle(.secondary)
+            Text("\(broker.displayName) 계정은 지금 자산 조회만 지원합니다.").font(.headline)
+            Text("시세·주문·선물옵션은 한국투자증권 계정으로 전환해서 사용해 주세요.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
