@@ -4,11 +4,11 @@ import Foundation
 public final class KisClient {
     public static let baseURL = URL(string: "https://openapi.koreainvestment.com:9443")!
 
-    let account: KisAccount
+    let account: BrokerAccount
     private let session: URLSession
     private let tokenStore: JSONStore
 
-    public init(account: KisAccount, session: URLSession = .shared, tokenStore: JSONStore = JSONStore("tokens.json")) {
+    public init(account: BrokerAccount, session: URLSession = .shared, tokenStore: JSONStore = JSONStore("tokens.json")) {
         self.account = account
         self.session = session
         self.tokenStore = tokenStore

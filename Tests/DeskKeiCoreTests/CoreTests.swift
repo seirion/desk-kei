@@ -3,6 +3,61 @@ import Foundation
 import CommonCrypto
 @testable import DeskKeiCore
 
+@Suite struct BrokerAccountTests {
+    @Test func oldAccountFileReadsAsKis() throws {
+        let json = #"{"accounts":[{"name":"한투","accountNo":"12345678-01","userId":"u","appKey":"k","appSecret":"s"}],"active":"한투"}"#
+        let file = try JSONDecoder().decode(AccountsFile.self, from: Data(json.utf8))
+        #expect(file.accounts[0].broker == .kis)
+        #expect(file.accounts[0].password.isEmpty)
+    }
+
+    @Test func requiredFieldsFollowTheBroker() {
+        #expect(BrokerAccount(broker: .kb, appKey: "a", appSecret: "b").missingFieldMessage == nil)
+        #expect(BrokerAccount(broker: .kis, appKey: "a", appSecret: "b").missingFieldMessage == nil)
+        #expect(BrokerAccount(broker: .kiwoom, appKey: "a", appSecret: "b").missingFieldMessage == "계좌번호를 입력해 주세요.")
+        #expect(BrokerAccount(broker: .kiwoom, accountNo: "1", appKey: "a", appSecret: "b").missingFieldMessage == "계좌 비밀번호를 입력해 주세요.")
+        #expect(BrokerAccount(broker: .kb).missingFieldMessage == "App Key와 App Secret을 입력해 주세요.")
+    }
+}
+
+@Suite struct BrokerBalanceTests {
+    @Test func kiwoomBalanceMapping() {
+        let summary: [String: Any] = ["tot_pur_amt": "000000010000000", "tot_evlt_amt": "000000012000000",
+                                      "tot_evlt_pl": "-000000500000", "prsm_dpst_aset_amt": "000000015000000"]
+        let rows: [[String: Any]] = [
+            ["stk_cd": "A005930", "stk_nm": "삼성전자  ", "rmnd_qty": "000000000000010", "pur_pric": "000000070000",
+             "cur_prc": "-000000072000", "pred_close_pric": "000000071000", "pur_amt": "000000700000",
+             "evlt_amt": "000000720000", "evltv_prft": "+000000020000", "prft_rt": "2.86"],
+            ["stk_cd": "A000660", "stk_nm": "SK하이닉스", "rmnd_qty": "000000000000000", "cur_prc": "1"],
+        ]
+        let r = KiwoomClient.makeBalance(summary: summary, rows: rows,
+                                         deposit: ["d2_entra": "000000000000000", "100stk_ord_alow_amt": "000000003000000"])
+        #expect(r.assets.count == 1)
+        #expect(r.assets[0].code == "005930" && r.assets[0].nameKr == "삼성전자")
+        #expect(r.assets[0].currentPrice == 72_000 && r.assets[0].priceChange == 1_000)
+        #expect(r.assets[0].profitLossAmount == 20_000 && r.assets[0].purchaseAmount == 700_000)
+        #expect(r.summary.totalEvaluationAmount == 15_000_000 && r.summary.stockEvaluationAmount == 12_000_000)
+        #expect(r.summary.profitLossTotal == -500_000 && r.summary.depositAmount == 3_000_000)
+    }
+
+    @Test func kbBalanceMapping() {
+        let data: [String: Any] = [
+            "nt_asts_val_amt": "000000009000000.00", "dy_tfnd": "000000001000000", "nxt2_dy_tfnd": "000000000000000",
+            "val_pl_sum": "  -123456",
+            "Record1": [
+                ["is_cd": "A005930", "is_nm": "삼성전자", "ec_q": "000000010", "hld_q": "0", "byng_avr_prc": "000000070000.00",
+                 "now_prc": "000000072000", "val_amt": "000000720000", "val_pl": "000000020000", "val_yld": "   2.86"],
+                ["is_cd": "A035720", "is_nm": "카카오", "ec_q": "0", "hld_q": "3"],
+            ],
+        ]
+        let r = KbClient.makeBalance(data)
+        #expect(r.assets.count == 1)
+        #expect(r.assets[0].code == "005930" && r.assets[0].holdingQty == 10 && r.assets[0].purchaseAmount == 700_000)
+        #expect(r.summary.netAssetAmount == 9_000_000 && r.summary.depositAmount == 1_000_000)
+        #expect(r.summary.profitLossTotal == -123_456 && r.summary.stockEvaluationAmount == 720_000)
+    }
+}
+
 @Suite struct MarketTests {
     @Test func tickSizes() {
         #expect(tickSize(1_999) == 1)
@@ -53,11 +108,11 @@ import CommonCrypto
 
 @Suite struct ModelTests {
     @Test func accountParts() {
-        let a = KisAccount(name: "a", accountNo: "12345678-01", appKey: "k", appSecret: "s")
+        let a = BrokerAccount(name: "a", accountNo: "12345678-01", appKey: "k", appSecret: "s")
         #expect(a.accountParts.cano == "12345678")
         #expect(a.accountParts.product == "01")
         #expect(a.hasTradingAccount)
-        #expect(!KisAccount(name: "b", appKey: "k", appSecret: "s").hasTradingAccount)
+        #expect(!BrokerAccount(name: "b", appKey: "k", appSecret: "s").hasTradingAccount)
     }
 
     @Test func watchlistNormalizes() {
@@ -92,7 +147,7 @@ import CommonCrypto
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = JSONStore("a.json", directory: dir)
         var file = AccountsFile()
-        file.accounts = [KisAccount(name: "x", appKey: "k", appSecret: "s")]
+        file.accounts = [BrokerAccount(name: "x", appKey: "k", appSecret: "s")]
         store.save(file)
         #expect(store.load(AccountsFile.self)?.accounts.first?.name == "x")
         let perms = try FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent("a.json").path)[.posixPermissions] as? Int
@@ -402,10 +457,10 @@ import CommonCrypto
     }
 
     @Test func futuresAccountUsesProduct03() {
-        #expect(KisAccount(accountNo: "12345678-01").futuresAccountParts == ("12345678", "03"))
-        #expect(KisAccount(accountNo: "1234567801").futuresAccountParts == ("12345678", "03"))
-        #expect(KisAccount(accountNo: "12345678-03").futuresAccountParts == ("12345678", "03"))
-        #expect(KisAccount(accountNo: "12345678").futuresAccountParts == ("12345678", "03"))
+        #expect(BrokerAccount(accountNo: "12345678-01").futuresAccountParts == ("12345678", "03"))
+        #expect(BrokerAccount(accountNo: "1234567801").futuresAccountParts == ("12345678", "03"))
+        #expect(BrokerAccount(accountNo: "12345678-03").futuresAccountParts == ("12345678", "03"))
+        #expect(BrokerAccount(accountNo: "12345678").futuresAccountParts == ("12345678", "03"))
     }
 }
 
