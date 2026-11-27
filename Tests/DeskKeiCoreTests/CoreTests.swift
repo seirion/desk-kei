@@ -30,6 +30,32 @@ import CommonCrypto
     }
 }
 
+@Suite struct BrokerCapabilityTests {
+    @Test func tradingSupportFollowsTheBroker() {
+        #expect(Broker.kis.supportsTrading && Broker.kb.supportsTrading && !Broker.kiwoom.supportsTrading)
+        #expect(Broker.kis.supportsFutures && !Broker.kb.supportsFutures)
+        #expect(Broker.kis.supportsQuantityChange && !Broker.kb.supportsQuantityChange)
+    }
+
+    @Test func kbOrderHistoryMapping() {
+        let rows: [[String: Any]] = [
+            ["ordr_no": "0000100", "stnd_is_no": "A005930", "hngl_shrt_nm": "삼성전자", "trd_dl_ccd_nm": "현금매수",
+             "ordr_uprc": "000000070000", "ordr_q": "10", "tl_ccls_q": "4", "nccls_q": "6", "ccls_uprc": "69900",
+             "ordr_tm": "091500", "sor_ordr_ccd": "S"],
+            ["ordr_no": "0000101", "stnd_is_no": "A000660", "hngl_shrt_nm": "SK하이닉스", "trd_dl_ccd_nm": "현금매도",
+             "ordr_uprc": "1100000", "ordr_q": "1", "tl_ccls_q": "1", "nccls_q": "0", "ccls_uprc": "1100000",
+             "ordr_tm": "093000", "sor_ordr_ccd": "K"],
+        ]
+        let all = KbClient.makeOrders(rows, filter: .all)
+        #expect(all.map(\.orderNo) == ["0000100", "0000101"])
+        #expect(all[0].code == "005930" && all[0].side == .buy && all[0].remainQty == 6)
+        #expect(all[0].status == "일부체결" && all[0].exchange == "SOR")
+        #expect(all[1].side == .sell && all[1].status == "체결" && all[1].exchange == "KRX" && all[1].execAmount == 1_100_000)
+        #expect(KbClient.makeOrders(rows, filter: .pending).map(\.orderNo) == ["0000100"])
+        #expect(KbClient.makeOrders(rows, filter: .executed).map(\.orderNo) == ["0000100", "0000101"])
+    }
+}
+
 @Suite struct BrokerBalanceTests {
     @Test func kiwoomBalanceMapping() {
         let summary: [String: Any] = ["tot_pur_amt": "000000010000000", "tot_evlt_amt": "000000012000000",

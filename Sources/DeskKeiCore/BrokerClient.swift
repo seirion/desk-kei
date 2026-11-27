@@ -9,8 +9,35 @@ public protocol BrokerClient {
     func balance() async throws -> (assets: [AssetItem], summary: AccountSummary)
 }
 
+/// 주식 주문까지 지원하는 증권사 클라이언트. 시세는 포함하지 않는다(시세는 KIS 계정 키로 받는다).
+public protocol TradingBroker: BrokerClient {
+    func placeOrder(_ req: OrderRequest) async throws -> OrderResult
+    /// 미체결 주문 정정. 수량을 바꿀 수 없는 증권사(`Broker.supportsQuantityChange`)는 `qty` 를 무시하고 남은 수량 전부를 정정한다.
+    func modify(_ item: DailyOrderItem, qty: Int, price: Int) async throws -> OrderResult
+    /// 미체결 주문 취소 (잔량 전부)
+    func cancel(_ item: DailyOrderItem) async throws -> OrderResult
+    /// 당일 주문/체결 내역
+    func dailyOrders(_ filter: CcldFilter) async throws -> [DailyOrderItem]
+    /// 매수 가능 수량·금액. 증권사가 제공하지 않으면 nil.
+    func buyableInfo(code: String, price: Int) async throws -> BuyableInfo?
+}
+
 extension KisClient: BrokerClient {
     public func verify() async throws { _ = try await accessToken() }
+}
+
+extension KisClient: TradingBroker {
+    public func modify(_ item: DailyOrderItem, qty: Int, price: Int) async throws -> OrderResult {
+        try await modifyOrder(orderNo: item.orderNo, exchange: item.exchange, qty: qty, price: price)
+    }
+
+    public func cancel(_ item: DailyOrderItem) async throws -> OrderResult {
+        try await cancelOrder(orderNo: item.orderNo, exchange: item.exchange, limitPrice: item.orderPrice)
+    }
+
+    public func buyableInfo(code: String, price: Int) async throws -> BuyableInfo? {
+        try await buyable(code: code, price: price)
+    }
 }
 
 public enum BrokerClients {
@@ -23,6 +50,14 @@ public enum BrokerClients {
         case .kiwoom: return KiwoomClient(account: account, session: session, tokenStore: tokenStore)
         case .kb: return KbClient(account: account, session: session, tokenStore: tokenStore)
         }
+    }
+}
+
+extension BrokerClients {
+    /// 주문까지 되는 클라이언트(KIS·KB). 인증 정보가 비어 있거나 주문을 지원하지 않는 증권사면 nil.
+    public static func makeTrading(_ account: BrokerAccount, session: URLSession = .shared,
+                                   tokenStore: JSONStore = JSONStore("tokens.json")) -> TradingBroker? {
+        make(account, session: session, tokenStore: tokenStore) as? TradingBroker
     }
 }
 

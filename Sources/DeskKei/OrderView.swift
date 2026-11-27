@@ -239,7 +239,7 @@ struct OrderView: View {
                             .foregroundStyle(orderType == t ? Color.white : Color.primary)
                     }
                     .buttonStyle(.plain)
-                    .disabled(t == .market && MarketClock.isKrxAfterMarket())
+                    .disabled(t == .market && MarketClock.isKrxAfterMarket() && model.account.broker == .kis)
                 }
             }
             VStack(spacing: 8) {
@@ -250,7 +250,10 @@ struct OrderView: View {
                         refreshBuyable()
                     }
                 }
-                stepperRow("수량", unit: "주", text: $inputQty, field: .qty, disabled: false, placeholder: "주문 수량") { up in
+                // 수량을 바꿀 수 없는 증권사는 정정 때 남은 수량 전부를 정정하므로 수량 칸을 잠근다.
+                stepperRow("수량", unit: "주", text: $inputQty, field: .qty,
+                           disabled: modifyTarget != nil && !model.account.broker.supportsQuantityChange,
+                           placeholder: "주문 수량") { up in
                     let q = Int(inputQty) ?? 0
                     inputQty = String(up ? q + 1 : max(1, q - 1))
                 }
@@ -392,10 +395,10 @@ struct OrderView: View {
     }
 
     private func refreshBuyable() {
-        guard side == .buy, !code.isEmpty, let price = priceNum, price > 0, let client = model.client else { return }
+        guard side == .buy, !code.isEmpty, let price = priceNum, price > 0, let client = model.tradingClient else { return }
         let target = code
         Task {
-            if let info = try? await client.buyable(code: target, price: price), code == target { buyable = info }
+            if let info = try? await client.buyableInfo(code: target, price: price), code == target { buyable = info }
         }
     }
 
@@ -407,7 +410,7 @@ struct OrderView: View {
         if let holdingQty { inputQty = String(holdingQty) }
     }
 
-    /// 주문을 낼 수 있는 계정인지. KIS 가 아닌 증권사는 아직 주문을 지원하지 않는다.
+    /// 주문을 낼 수 있는 계정인지. 키움은 아직 주문을 지원하지 않는다.
     private var canOrder: Bool { model.account.broker.supportsTrading }
 
     private func askConfirm() {
@@ -424,8 +427,8 @@ struct OrderView: View {
             guard let price = priceNum, price > 0 else { errorMessage = "단가를 입력해주세요."; return }
             message = "[\(name)] \(sideText) \(fmt(price))원 × \(fmt(qty))주 = \(fmt(price * qty))원\n주문하시겠습니까?"
         }
-        // 정정은 설정과 무관하게 항상 확인한다.
-        if model.confirmOrders || modifyTarget != nil {
+        // 정정은 설정과 무관하게 항상 확인한다. KIS 가 아닌 증권사는 아직 실제 주문으로 확인하지 못해 항상 확인한다.
+        if model.confirmOrders || modifyTarget != nil || model.account.broker != .kis {
             confirmMessage = message
         } else {
             Task { await submit() }
@@ -433,19 +436,21 @@ struct OrderView: View {
     }
 
     private func submit() async {
-        guard let client = model.client, let qty = qtyNum else { return }
+        guard let client = model.tradingClient, let qty = qtyNum else { return }
         let price = orderType == .market ? 0 : (priceNum ?? 0)
         submitting = true
         defer { submitting = false }
         do {
             if let target = modifyTarget {
-                let r = try await client.modifyOrder(orderNo: target.orderNo, exchange: target.exchange, qty: qty, price: price)
+                let r = try await client.modify(target, qty: qty, price: price)
                 resultMessage = "✅ 정정 완료! 주문번호: \(r.orderNo)"
                 modifyTarget = nil
             } else {
                 let r = try await client.placeOrder(OrderRequest(code: code, side: side, type: orderType, qty: qty, price: price))
                 resultMessage = "✅ 주문 완료! 주문번호: \(r.orderNo)"
             }
+            // KIS 는 체결 통보가 와서 알아서 갱신되지만 KB 는 통보가 없어 직접 갱신한다.
+            if model.account.broker != .kis { model.refreshAssets() }
         } catch {
             errorMessage = error.localizedDescription
         }

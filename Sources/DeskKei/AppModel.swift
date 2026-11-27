@@ -326,6 +326,9 @@ final class AppModel: ObservableObject {
     /// 증권사와 관계없이 자산 조회에 쓰는 클라이언트
     var brokerClient: BrokerClient? { BrokerClients.make(account) }
 
+    /// 주식 주문·정정·취소·주문내역에 쓰는 클라이언트 (KIS·KB). 지원하지 않는 증권사면 nil.
+    var tradingClient: TradingBroker? { BrokerClients.makeTrading(account) }
+
     /// 입력한 계정으로 인증(토큰 발급)이 되는지 확인한다. 저장된 토큰이 아니라 입력값으로 새로 확인한다.
     func verifyAccount(_ acc: BrokerAccount) async throws {
         if let message = acc.missingFieldMessage { throw KisError(message) }

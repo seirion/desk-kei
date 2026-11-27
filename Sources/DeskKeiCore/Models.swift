@@ -26,8 +26,14 @@ public enum Broker: String, Codable, CaseIterable, Identifiable, Hashable {
     /// KIS 체결통보(웹소켓)에 쓰는 HTS 사용자 ID 를 받는지
     public var usesUserId: Bool { self == .kis }
 
-    /// 시세·주문·선물옵션까지 지원하는지. 그 밖의 증권사는 지금은 자산 조회만 된다.
-    public var supportsTrading: Bool { self == .kis }
+    /// 주식 주문·정정·취소·주문내역을 지원하는지. 키움은 지금은 자산 조회만 된다.
+    public var supportsTrading: Bool { self == .kis || self == .kb }
+
+    /// 선물옵션 시세·주문을 지원하는지 (시세는 KIS 계정 키로 받고 주문은 KIS 계정만 낸다)
+    public var supportsFutures: Bool { self == .kis }
+
+    /// 미체결 주문 정정에서 수량도 바꿀 수 있는지. 아니면 남은 수량 전부를 가격만 바꿔 정정한다.
+    public var supportsQuantityChange: Bool { self == .kis }
 
     /// 계정 입력 화면에 보여 줄 안내: 입력값이 전송되는 곳
     public var apiHostNote: String { "\(displayName) API" }

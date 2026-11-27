@@ -119,12 +119,12 @@ struct OrderHistoryView: View {
     }
 
     private func cancel(_ item: DailyOrderItem) async {
-        guard let client = model.client else { return }
+        guard let client = model.tradingClient else { return }
         actionMessage = nil
         cancelingId = item.id
         defer { cancelingId = nil }
         do {
-            _ = try await client.cancelOrder(orderNo: item.orderNo, exchange: item.exchange, limitPrice: item.orderPrice)
+            _ = try await client.cancel(item)
         } catch {
             actionMessage = error.localizedDescription
         }
@@ -132,7 +132,7 @@ struct OrderHistoryView: View {
     }
 
     private func load() async {
-        guard let client = model.client else {
+        guard let client = model.tradingClient else {
             items = []
             error = !model.account.hasCredentials ? "등록된 계정이 없습니다."
                 : model.account.broker.supportsTrading ? nil : "\(model.account.broker.displayName) 주문 내역은 아직 지원하지 않습니다."

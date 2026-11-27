@@ -2,7 +2,7 @@ import Foundation
 
 /// KB증권 Open API 클라이언트 (https://developer.kbsec.com:32484). 인증과 잔고 조회를 지원한다.
 /// 모든 TR 을 `api/v1/<tr코드 소문자>` 로 POST 하고 요청·응답이 dataHeader / dataBody 로 감싸진다.
-public final class KbClient: BrokerClient {
+public final class KbClient: TradingBroker {
     public static let baseURL = URL(string: "https://developer.kbsec.com:32484")!
 
     let account: BrokerAccount
@@ -71,6 +71,20 @@ public final class KbClient: BrokerClient {
         return r.json["dataBody"] as? [String: Any] ?? [:]
     }
 
+    /// 다음키(nxt_key)가 비거나 그대로일 때까지 이어서 조회해 [rowsKey] 레코드를 모두 모은다.
+    func callPaged(tr: String, body: [String: String], rowsKey: String, maxPages: Int = 10) async throws -> [[String: Any]] {
+        var rows: [[String: Any]] = []
+        var nextKey = ""
+        for _ in 0..<maxPages {
+            let data = try await call(tr: tr, body: body.merging(["nxt_key": nextKey]) { a, _ in a })
+            rows += (data[rowsKey] as? [[String: Any]]) ?? []
+            let key = str(data["nxt_key"]).trimmingCharacters(in: .whitespaces)
+            if key.isEmpty || key == nextKey { break }
+            nextKey = key
+        }
+        return rows
+    }
+
     // MARK: 잔고
 
     public func balance() async throws -> (assets: [AssetItem], summary: AccountSummary) {
@@ -112,4 +126,113 @@ public final class KbClient: BrokerClient {
         summary.depositAmount = d2 != 0 ? d2 : BrokerNumber.int(data["dy_tfnd"])
         return (assets, summary)
     }
+}
+
+// MARK: - 주문
+
+/// 앱의 거래소 구분(KRX/NXT/SOR)과 KB sor_ordr_ccd(K/N/S) 변환
+enum KbExchange {
+    static func toCode(_ exchange: String) -> String {
+        switch exchange {
+        case "KRX": return "K"
+        case "NXT": return "N"
+        default: return "S"
+        }
+    }
+
+    static func fromCode(_ code: String) -> String {
+        switch code {
+        case "K": return "KRX"
+        case "N": return "NXT"
+        default: return "SOR"
+        }
+    }
+}
+
+extension KbClient {
+    /// SSAM1802 매수주문 / SSAM1801 매도주문. 거래소는 KB 가 고르는 SOR(S) 로 보낸다.
+    public func placeOrder(_ req: OrderRequest) async throws -> OrderResult {
+        let market = req.type == .market
+        let data = try await call(tr: req.side == .buy ? "SSAM1802" : "SSAM1801", body: [
+            "mkt_tm_clsf": "1",
+            "is_cd": req.code,
+            "ordr_q": String(req.qty),
+            "ordr_uprc": market ? "0" : String(req.price),
+            "ordr_ccd": market ? "03" : "00",
+            "sor_ordr_ccd": KbExchange.toCode("SOR"),
+        ])
+        return OrderResult(orderNo: str(data["ordr_no"]).trimmingCharacters(in: .whitespaces), time: MarketClock.timeString())
+    }
+
+    /// SSAM1805 정정주문. KB 는 수량을 바꾸지 않고 남은 수량 전부를 지정가로 정정한다(`qty` 는 쓰지 않는다).
+    public func modify(_ item: DailyOrderItem, qty: Int, price: Int) async throws -> OrderResult {
+        guard price > 0 else { throw KisError("정정할 단가를 입력해 주세요.") }
+        let data = try await call(tr: "SSAM1805", body: [
+            "mkt_tm_clsf": "1",
+            "is_cd": item.code,
+            "ordr_q": "",
+            "ordr_uprc": String(price),
+            "ordr_ccd": "00",
+            "crct_clsf": "2",
+            "orgn_ordr_no": item.orderNo,
+            "sor_ordr_ccd": KbExchange.toCode(item.exchange),
+        ])
+        return OrderResult(orderNo: str(data["ordr_no"]).trimmingCharacters(in: .whitespaces), time: MarketClock.timeString())
+    }
+
+    /// SSAM1806 취소주문 (잔량 전부)
+    public func cancel(_ item: DailyOrderItem) async throws -> OrderResult {
+        let data = try await call(tr: "SSAM1806", body: [
+            "is_cd": item.code,
+            "ordr_q": "",
+            "crct_clsf": "2",
+            "orgn_ordr_no": item.orderNo,
+        ])
+        return OrderResult(orderNo: str(data["ordr_no"]).trimmingCharacters(in: .whitespaces), time: MarketClock.timeString())
+    }
+
+    /// SSQM2341 체결/미체결 조회 (ccls_clsf 0:전체 1:체결 2:미체결, 당일)
+    public func dailyOrders(_ filter: CcldFilter) async throws -> [DailyOrderItem] {
+        let clsf: String
+        switch filter {
+        case .all: clsf = "0"
+        case .executed: clsf = "1"
+        case .pending: clsf = "2"
+        }
+        let rows = try await callPaged(tr: "SSQM2341", body: ["ccls_clsf": clsf, "ordr_dt": MarketClock.todayString()], rowsKey: "Record1")
+        return Self.makeOrders(rows, filter: filter)
+    }
+
+    static func makeOrders(_ rows: [[String: Any]], filter: CcldFilter) -> [DailyOrderItem] {
+        rows.compactMap { o in
+            let execQty = BrokerNumber.int(o["tl_ccls_q"])
+            let remain = BrokerNumber.int(o["nccls_q"])
+            switch filter {
+            case .all: break
+            case .executed: guard execQty > 0 else { return nil }
+            case .pending: guard remain > 0 else { return nil }
+            }
+            let avg = BrokerNumber.double(o["ccls_uprc"])
+            return DailyOrderItem(
+                orderNo: str(o["ordr_no"]).trimmingCharacters(in: .whitespaces),
+                code: str(o["stnd_is_no"]).trimmingCharacters(in: .whitespaces).removingPrefix("A"),
+                nameKr: str(o["hngl_shrt_nm"]).trimmingCharacters(in: .whitespaces),
+                side: str(o["trd_dl_ccd_nm"]).contains("매수") ? .buy : .sell,
+                orderQty: BrokerNumber.int(o["ordr_q"]),
+                orderPrice: BrokerNumber.int(o["ordr_uprc"]),
+                execQty: execQty,
+                execAvgPrice: avg,
+                execAmount: Int((avg * Double(execQty)).rounded()),
+                remainQty: remain,
+                orderTime: str(o["ordr_tm"]).trimmingCharacters(in: .whitespaces),
+                status: remain > 0 ? (execQty > 0 ? "일부체결" : "미체결") : "체결",
+                orderType: "",
+                exchange: KbExchange.fromCode(str(o["sor_ordr_ccd"]).trimmingCharacters(in: .whitespaces)),
+                canceled: false
+            )
+        }
+    }
+
+    /// KB 는 주문가능 조회를 쓰지 않는다.
+    public func buyableInfo(code: String, price: Int) async throws -> BuyableInfo? { nil }
 }

@@ -81,7 +81,7 @@ struct FuturesView: View {
     private var form: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !canTrade {
-                Text(model.account.broker.supportsTrading
+                Text(model.account.broker.supportsFutures
                      ? "선물옵션 계좌가 확인되지 않아 매수/매도할 수 없습니다. 시세와 호가는 볼 수 있습니다."
                      : "\(model.account.broker.displayName) 계정은 선물옵션 주문을 지원하지 않습니다. 시세와 호가는 볼 수 있습니다.")
                     .font(.callout)
@@ -122,7 +122,7 @@ struct FuturesView: View {
     }
 
     /// 선물옵션 계좌가 없다고 확인되면 주문할 수 없다. 확인하지 못한 경우(unknown)는 막지 않는다.
-    private var canTrade: Bool { model.account.broker.supportsTrading && model.futuresAccount != .notFound }
+    private var canTrade: Bool { model.account.broker.supportsFutures && model.futuresAccount != .notFound }
 
     private func sideButton(_ s: OrderSide, _ label: String, _ tint: Color) -> some View {
         Button { side = s } label: {
